@@ -10,17 +10,33 @@ struct StickyTVApp: App {
                 .environmentObject(library)
                 .preferredColorScheme(.dark)
                 .tint(Nova.accent)
+                .persistentSystemOverlays(.hidden)
         }
     }
 }
 
-/// The sections, in the Fire TV app's order. Five fit along the bottom; the rest are under "More".
-enum AppSection: Hashable { case home, live, movies, shows, search, settings }
-
-final class Nav: ObservableObject {
-    @Published var tab: AppSection = .home
+/// The sections of the left menu, in the Fire TV app's order.
+enum AppSection: String, CaseIterable, Hashable {
+    case search, home, live, multiview, sports, movies, shows, recordings, settings
+    var label: String {
+        switch self {
+        case .search: "Search"; case .home: "Home"; case .live: "Live TV"; case .multiview: "Multiview"; case .sports: "Sports"
+        case .movies: "Movies"; case .shows: "TV Shows"; case .recordings: "Recordings"; case .settings: "Settings"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .search: "magnifyingglass"; case .home: "house.fill"; case .live: "play.tv.fill"; case .multiview: "square.grid.2x2.fill"
+        case .sports: "sportscourt.fill"; case .movies: "film.fill"; case .shows: "tv.fill"; case .recordings: "record.circle"; case .settings: "gearshape.fill"
+        }
+    }
 }
 
+final class Nav: ObservableObject {
+    @Published var section: AppSection = .home
+}
+
+/// The Fire TV app's frame, on its side: the menu down the left, the page on the right, the clock at the top.
 struct RootView: View {
     @EnvironmentObject var library: Library
     @ObservedObject private var live = LivePlayer.shared
@@ -37,19 +53,12 @@ struct RootView: View {
                     account = a
                 }
             } else {
-                TabView(selection: $nav.tab) {
-                    HomeView().tabItem { Label("Home", systemImage: "house.fill") }.tag(AppSection.home)
-                    LiveView().tabItem { Label("Live TV", systemImage: "play.tv.fill") }.tag(AppSection.live)
-                    BrowseView(kind: .movie).tabItem { Label("Movies", systemImage: "film.fill") }.tag(AppSection.movies)
-                    BrowseView(kind: .series).tabItem { Label("TV Shows", systemImage: "tv.fill") }.tag(AppSection.shows)
-                    SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(AppSection.search)
-                    SettingsView(onSignOut: {
-                        live.stop()
-                        if let a = account { library.prefs.removeAccount(a) }
-                        library.signOut()
-                        account = library.prefs.activeAccount
-                        if let next = account { library.load(next) }
-                    }).tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(AppSection.settings)
+                HStack(spacing: 0) {
+                    Rail(nav: nav)
+                    ZStack(alignment: .topTrailing) {
+                        page.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ClockView().padding(.top, 6).padding(.trailing, 14).allowsHitTesting(false)
+                    }
                 }
                 .environmentObject(nav)
             }
@@ -62,16 +71,93 @@ struct RootView: View {
             live.attach(library)
             account = library.prefs.activeAccount
             if let a = account { library.load(a) }
-            let tab = UITabBarAppearance(); tab.configureWithOpaqueBackground(); tab.backgroundColor = UIColor(Nova.bg2)
-            UITabBar.appearance().standardAppearance = tab; UITabBar.appearance().scrollEdgeAppearance = tab
-            let bar = UINavigationBarAppearance(); bar.configureWithOpaqueBackground(); bar.backgroundColor = UIColor(Nova.bg)
-            bar.titleTextAttributes = [.foregroundColor: UIColor.white]; bar.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-            UINavigationBar.appearance().standardAppearance = bar; UINavigationBar.appearance().scrollEdgeAppearance = bar
+        }
+    }
+
+    @ViewBuilder private var page: some View {
+        switch nav.section {
+        case .search: SearchView()
+        case .home: HomeView()
+        case .live: LiveView()
+        case .multiview: ComingSoon(title: "Multiview", text: "Up to four channels at once is coming in a later update.")
+        case .sports: ComingSoon(title: "Sports", text: "Live scores, games on now and My Teams are coming in the next update.")
+        case .movies: BrowseView(kind: .movie).id("movies")
+        case .shows: BrowseView(kind: .series).id("shows")
+        case .recordings: ComingSoon(title: "Recordings", text: "Recording is coming in a later update.")
+        case .settings:
+            SettingsView(onSignOut: {
+                live.stop()
+                if let a = account { library.prefs.removeAccount(a) }
+                library.signOut()
+                account = library.prefs.activeAccount
+                if let next = account { library.load(next) }
+            })
         }
     }
 }
 
-/// Sign in to an Xtream provider (or paste an M3U link).
+/// The menu down the left (icons, like the Fire TV's): tap one to go there.
+struct Rail: View {
+    @ObservedObject var nav: Nav
+    @AppStorage("appLogo") private var logo = AppLogo.graffiti.rawValue
+    var body: some View {
+        VStack(spacing: 0) {
+            Image((AppLogo(rawValue: logo) ?? .graffiti).image).resizable().scaledToFit().frame(width: 40, height: 34).padding(.vertical, 6)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 6) {
+                    ForEach(AppSection.allCases, id: \.self) { s in
+                        Button { nav.section = s } label: {
+                            Image(systemName: s.icon).font(.system(size: 18, weight: .semibold))
+                                .frame(width: 46, height: 38)
+                                .foregroundStyle(nav.section == s ? Nova.accent : Nova.muted)
+                                .background(nav.section == s ? Nova.accent.opacity(0.16) : Nova.panel, in: RoundedRectangle(cornerRadius: 11))
+                                .overlay(RoundedRectangle(cornerRadius: 11).stroke(nav.section == s ? Nova.accent.opacity(0.6) : Nova.line))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(s.label)
+                        if s == .search { Spacer().frame(height: 4) }
+                    }
+                }.padding(.vertical, 4)
+            }
+        }
+        .frame(width: 62)
+        .background(LinearGradient(colors: [Nova.bg2, Nova.bg], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+    }
+}
+
+struct ClockView: View {
+    @AppStorage("clock24") private var clock24 = false
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { ctx in
+            Text(timeText(ctx.date, clock24: clock24)).font(.system(size: 15, weight: .bold, design: .monospaced)).foregroundStyle(Nova.text)
+        }
+    }
+}
+
+struct ComingSoon: View {
+    let title: String
+    let text: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title.uppercased()).font(.system(size: 24, weight: .black)).foregroundStyle(Nova.text)
+            Text(text).foregroundStyle(Nova.muted)
+            Spacer()
+        }.padding(.horizontal, 28).padding(.top, 16).frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A "‹ Back" button for pages opened from another (the menu stays on the left).
+struct BackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        Button { dismiss() } label: {
+            Label("Back", systemImage: "chevron.left").font(.subheadline.bold()).padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.black.opacity(0.45), in: Capsule())
+        }.buttonStyle(.plain).foregroundStyle(.white)
+    }
+}
+
+/// Sign in to an Xtream provider (or paste an M3U link). Logo on the left, the boxes on the right.
 struct LoginView: View {
     let onDone: (Account) -> Void
     @State private var server = ""
@@ -82,25 +168,29 @@ struct LoginView: View {
     @State private var error: String?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                BrandLogo().padding(.top, 40)
-                Text("Sign in with the details from your provider.").foregroundStyle(Nova.muted)
-                field("SERVER URL", $server, hint: "http://example.com:8080  (or paste an M3U link)", keyboard: .URL)
-                field("USERNAME", $user, hint: "")
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("PASSWORD").font(.caption.bold()).foregroundStyle(Nova.muted)
-                    SecureField("", text: $pass).textContentType(.password).padding(14).background(Nova.panel, in: RoundedRectangle(cornerRadius: 12))
-                }
-                field("NAME (OPTIONAL)", $name, hint: "e.g. Home TV")
-                if let error { Text(error).foregroundStyle(Nova.live).font(.footnote.bold()) }
-                Button {
-                    Task { await signIn() }
-                } label: {
-                    HStack { if busy { ProgressView().tint(.black) }; Text(busy ? "Signing in…" : "Sign in").bold() }
-                        .frame(maxWidth: .infinity).padding(14).background(Nova.accent, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black)
-                }.disabled(busy)
-            }.padding(24)
+        HStack(spacing: 0) {
+            VStack(spacing: 14) {
+                Image(AppLogo.graffiti.image).resizable().scaledToFit().frame(maxWidth: 220)
+                Text("Sign in with the details from your provider.").font(.subheadline).foregroundStyle(Nova.muted).multilineTextAlignment(.center)
+            }.frame(maxWidth: .infinity).padding(24)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    field("SERVER URL", $server, hint: "http://example.com:8080  (or paste an M3U link)", keyboard: .URL)
+                    HStack(spacing: 12) {
+                        field("USERNAME", $user, hint: "")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("PASSWORD").font(.caption.bold()).foregroundStyle(Nova.muted)
+                            SecureField("", text: $pass).textContentType(.password).padding(12).background(Nova.panel, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    field("NAME (OPTIONAL)", $name, hint: "e.g. Home TV")
+                    if let error { Text(error).foregroundStyle(Nova.live).font(.footnote.bold()) }
+                    Button { Task { await signIn() } } label: {
+                        HStack { if busy { ProgressView().tint(.black) }; Text(busy ? "Signing in…" : "Sign in").bold() }
+                            .frame(maxWidth: .infinity).padding(13).background(Nova.accent, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(.black)
+                    }.disabled(busy)
+                }.padding(24)
+            }.frame(maxWidth: .infinity)
         }
         .background(Nova.bg.ignoresSafeArea())
         .onChange(of: server) { v in
@@ -113,7 +203,7 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.caption.bold()).foregroundStyle(Nova.muted)
             TextField(hint, text: text).keyboardType(keyboard).textInputAutocapitalization(.never).autocorrectionDisabled()
-                .padding(14).background(Nova.panel, in: RoundedRectangle(cornerRadius: 12))
+                .padding(12).background(Nova.panel, in: RoundedRectangle(cornerRadius: 12))
         }
     }
 

@@ -21,7 +21,7 @@ struct HomeView: View {
                                     .foregroundStyle(e.timeIntervalSinceNow < 7 * 86400 ? Nova.live : Nova.muted)
                             }
                         }
-                    }.padding(.horizontal, 16).padding(.top, 8)
+                    }.padding(.leading, 16).padding(.trailing, 86).padding(.top, 6)     // (the clock is at the top right)
 
                     if library.vodLoading && library.movies.isEmpty {
                         HStack(spacing: 8) { ProgressView().tint(Nova.accent); Text("Movies and shows are still arriving…").font(.caption).foregroundStyle(Nova.muted) }
