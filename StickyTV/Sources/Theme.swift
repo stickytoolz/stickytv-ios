@@ -145,3 +145,51 @@ func minutesText(_ seconds: Double) -> String {
     let m = Int(seconds / 60)
     return m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m"
 }
+
+/// A name too long for its space scrolls along (like the Fire TV's highlighted row) while [active]; otherwise it ends in "…".
+struct MarqueeText: View {
+    let text: String
+    let font: Font
+    var color: Color = Nova.text
+    var active: Bool
+    @State private var full: CGFloat = 0
+    @State private var box: CGFloat = 0
+    @State private var offset: CGFloat = 0
+
+    private var scrolling: Bool { active && full > box + 1 }
+
+    var body: some View {
+        Text(text).font(font).foregroundStyle(color).lineLimit(1)
+            .opacity(scrolling ? 0 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(GeometryReader { g in Color.clear.onAppear { box = g.size.width }.onChange(of: g.size.width) { box = $0 } })
+            .background(alignment: .leading) {
+                // the whole name's width, measured out of sight
+                Text(text).font(font).fixedSize().hidden()
+                    .background(GeometryReader { g in Color.clear.onAppear { full = g.size.width }.onChange(of: g.size.width) { full = $0 } })
+            }
+            .overlay(alignment: .leading) {
+                if scrolling {
+                    Text(text).font(font).foregroundStyle(color).fixedSize().offset(x: offset)
+                        .frame(width: box, alignment: .leading).clipped()
+                        .task(id: "\(text)|\(box)|\(full)") { await scroll() }
+                }
+            }
+    }
+
+    /// Pause, glide to the end, pause, jump back; again and again.
+    private func scroll() async {
+        var still = Transaction(); still.disablesAnimations = true
+        withTransaction(still) { offset = 0 }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            if Task.isCancelled { break }
+            let d = full - box + 6
+            let secs = Double(d) / 32
+            withAnimation(.linear(duration: secs)) { offset = -d }
+            try? await Task.sleep(nanoseconds: UInt64((secs + 1.3) * 1_000_000_000))
+            if Task.isCancelled { break }
+            withTransaction(still) { offset = 0 }
+        }
+    }
+}

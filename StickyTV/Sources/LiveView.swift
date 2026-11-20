@@ -26,11 +26,11 @@ struct LiveView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            categories.frame(width: 168)
+            categories.frame(width: 148)
             Divider().overlay(Nova.line)
             channelList.frame(maxWidth: .infinity)
             Divider().overlay(Nova.line)
-            preview.frame(width: 300)
+            preview.frame(width: 268)
         }
         .padding(.top, 24)
         .background(Nova.bg.ignoresSafeArea())
@@ -45,7 +45,7 @@ struct LiveView: View {
                     Text("LIVE TV").font(.system(size: 18, weight: .black)).foregroundStyle(Nova.text).padding(.horizontal, 12).padding(.bottom, 6)
                     ForEach(cats, id: \.0) { id, name in
                         Button { cat = id } label: {
-                            Text(name).font(.system(size: 14, weight: id == cat ? .bold : .medium)).lineLimit(2).multilineTextAlignment(.leading)
+                            Text(name).font(.system(size: 13, weight: id == cat ? .bold : .medium)).lineLimit(2).multilineTextAlignment(.leading)
                                 .foregroundStyle(id == cat ? Nova.accent : Nova.text)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
                                 .background(id == cat ? Nova.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 10))
@@ -172,23 +172,23 @@ struct ChannelRow: View {
         let now = library.nowNext(channel).now
         HStack(spacing: 10) {
             NetImage(url: channel.logo, fallback: channel.name, fit: true)
-                .frame(width: 50, height: 34).padding(4).background(Color(red: 0.04, green: 0.06, blue: 0.11), in: RoundedRectangle(cornerRadius: 8))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 40, height: 26).padding(3).background(Color(red: 0.04, green: 0.06, blue: 0.11), in: RoundedRectangle(cornerRadius: 7))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    if channel.num > 0 { Text("\(channel.num)").font(.caption.monospacedDigit()).foregroundStyle(Nova.faint) }
-                    Text(channel.name).font(.subheadline.weight(.semibold)).foregroundStyle(Nova.text).lineLimit(1)
-                    if favorite { Image(systemName: "star.fill").foregroundStyle(Nova.gold).font(.caption2) }
+                HStack(spacing: 5) {
+                    if channel.num > 0 { Text("\(channel.num)").font(.system(size: 11).monospacedDigit()).foregroundStyle(Nova.faint) }
+                    // the playing channel's name scrolls when it's too long (like the highlighted row on the Fire TV)
+                    MarqueeText(text: channel.name, font: .system(size: 13, weight: .semibold), active: playing)
+                    if favorite { Image(systemName: "star.fill").foregroundStyle(Nova.gold).font(.system(size: 9)) }
+                    if playing { Image(systemName: "speaker.wave.2.fill").foregroundStyle(Nova.accent).font(.system(size: 10)) }
                 }
                 if let now {
-                    Text(now.title).font(.caption).foregroundStyle(Nova.muted).lineLimit(1)
+                    MarqueeText(text: now.title, font: .system(size: 11), color: Nova.muted, active: playing)
                     ProgressBar(value: now.progress(Date())).frame(maxWidth: 160)
                 }
             }
-            Spacer(minLength: 0)
-            if playing { Image(systemName: "speaker.wave.2.fill").foregroundStyle(Nova.accent).font(.caption) }
         }
-        .padding(.horizontal, 8).padding(.vertical, 6)
+        .padding(.horizontal, 7).padding(.vertical, 5)
         .background(playing ? Nova.accent.opacity(0.12) : Nova.panel.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(playing ? Nova.accent.opacity(0.7) : .clear))
     }
