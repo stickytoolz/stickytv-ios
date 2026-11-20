@@ -10,6 +10,8 @@ struct LiveView: View {
     @EnvironmentObject var library: Library
     @ObservedObject private var live = LivePlayer.shared
     @AppStorage("liveCat") private var cat = allCat
+    /// Guide (the grid, as the Fire TV opens with) or List (categories, channels, preview).
+    @AppStorage("liveGuide") private var guideMode = true
 
     private var cats: [(String, String)] {
         [(favCat, "★ Favourites"), (recentCat, "Recently watched"), (allCat, "All channels")] + library.liveCategories.map { ($0.id, $0.name) }
@@ -25,6 +27,10 @@ struct LiveView: View {
     }
 
     var body: some View {
+        if guideMode { GuideView(guideMode: $guideMode) } else { listMode }
+    }
+
+    private var listMode: some View {
         HStack(spacing: 0) {
             categories.frame(width: 148)
             Divider().overlay(Nova.line)
@@ -42,7 +48,8 @@ struct LiveView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    Text("LIVE TV").font(.system(size: 18, weight: .black)).foregroundStyle(Nova.text).padding(.horizontal, 12).padding(.bottom, 6)
+                    Text("LIVE TV").font(.system(size: 18, weight: .black)).foregroundStyle(Nova.text).padding(.horizontal, 12)
+                    ModeSwitch(guideMode: $guideMode).padding(.horizontal, 8).padding(.bottom, 6)
                     ForEach(cats, id: \.0) { id, name in
                         Button { cat = id } label: {
                             Text(name).font(.system(size: 13, weight: id == cat ? .bold : .medium)).lineLimit(2).multilineTextAlignment(.leading)
