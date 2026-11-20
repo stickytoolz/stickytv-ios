@@ -46,4 +46,20 @@ final class SportsTests: XCTestCase {
         XCTAssertEqual(Sports.sorted(g, myTeams: []).first?.id, "nfl:401", "live first")
         XCTAssertEqual(Sports.sorted(g, myTeams: ["nfl:21"]).first?.id, "nfl:402", "your team's game first")
     }
+
+    func testTeamList() {
+        let json = #"{"sports":[{"leagues":[{"teams":[{"team":{"id":"18","displayName":"New York Knicks","shortDisplayName":"Knicks","abbreviation":"NY","logos":[{"href":"https://x/ny.png"}]}},{"team":{"id":"2","displayName":"Boston Celtics","shortDisplayName":"Celtics","abbreviation":"BOS"}}]}]}]}"#
+        let t = Sports.parseTeams(Data(json.utf8), league: League("nba", "NBA", "basketball"))
+        XCTAssertEqual(t.map(\.short), ["Celtics", "Knicks"], "sorted by name")
+        XCTAssertEqual(t[1].id, "nba:18"); XCTAssertEqual(t[1].logo, "https://x/ny.png")
+    }
+
+    func testHiddenCategoriesAndTeamsAreKept() {
+        let p = Prefs(defaults: UserDefaults(suiteName: "t-\(UUID())")!)
+        p.hiddenCategories = ["live:7"]; XCTAssertEqual(p.hiddenCategories, ["live:7"])
+        let knicks = Team(id: "nba:18", name: "New York Knicks", short: "Knicks", abbr: "NY", logo: nil, league: "nba")
+        p.toggleTeam(knicks); XCTAssertEqual(p.myTeams.map(\.id), ["nba:18"])
+        p.toggleTeam(knicks); XCTAssertTrue(p.myTeams.isEmpty)
+        XCTAssertTrue(p.liveScores, "on unless turned off")
+    }
 }

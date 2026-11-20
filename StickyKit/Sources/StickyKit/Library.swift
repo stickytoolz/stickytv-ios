@@ -99,20 +99,44 @@ public final class Library: ObservableObject {
         applyVod(p.movieCats, p.seriesCats, p.movies, p.series)
     }
 
+    /// Every category the provider has (hidden ones too), for Settings › Hide & unhide.
+    @Published public private(set) var allLiveCategories: [Category] = []
+    @Published public private(set) var allMovieCategories: [Category] = []
+    @Published public private(set) var allSeriesCategories: [Category] = []
+    private var rawChannels: [Channel] = [], rawMovies: [Movie] = [], rawSeries: [Series] = []
+
     private func applyLive(_ cats: [Category], _ chs: [Channel]) {
-        let ids = Set(cats.map(\.id))
-        let byCat = Dictionary(grouping: chs, by: \.categoryId)
-        liveCategories = cats.filter { !(byCat[$0.id]?.isEmpty ?? true) }
-        channels = chs.filter { ids.isEmpty || ids.contains($0.categoryId) || cats.isEmpty }
-        channelsByCat = byCat
+        let hidden = prefs.hiddenCategories
+        let byCatAll = Dictionary(grouping: chs, by: \.categoryId)
+        allLiveCategories = cats.filter { !(byCatAll[$0.id]?.isEmpty ?? true) }
+        rawChannels = chs
+        liveCategories = allLiveCategories.filter { !hidden.contains("live:\($0.id)") }
+        channels = chs.filter { !hidden.contains("live:\($0.categoryId)") }
+        channelsByCat = Dictionary(grouping: channels, by: \.categoryId)
     }
 
     private func applyVod(_ mc: [Category], _ sc: [Category], _ mv: [Movie], _ se: [Series]) {
-        let mBy = Dictionary(grouping: mv, by: \.categoryId)
-        let sBy = Dictionary(grouping: se, by: \.categoryId)
-        movieCategories = mc.filter { !(mBy[$0.id]?.isEmpty ?? true) }
-        seriesCategories = sc.filter { !(sBy[$0.id]?.isEmpty ?? true) }
-        movies = mv; series = se; moviesByCat = mBy; seriesByCat = sBy
+        let hidden = prefs.hiddenCategories
+        let mAll = Dictionary(grouping: mv, by: \.categoryId)
+        let sAll = Dictionary(grouping: se, by: \.categoryId)
+        allMovieCategories = mc.filter { !(mAll[$0.id]?.isEmpty ?? true) }
+        allSeriesCategories = sc.filter { !(sAll[$0.id]?.isEmpty ?? true) }
+        rawMovies = mv; rawSeries = se
+        movieCategories = allMovieCategories.filter { !hidden.contains("movie:\($0.id)") }
+        seriesCategories = allSeriesCategories.filter { !hidden.contains("series:\($0.id)") }
+        movies = mv.filter { !hidden.contains("movie:\($0.categoryId)") }
+        series = se.filter { !hidden.contains("series:\($0.categoryId)") }
+        moviesByCat = Dictionary(grouping: movies, by: \.categoryId)
+        seriesByCat = Dictionary(grouping: series, by: \.categoryId)
+    }
+
+    /// Hide or show a category ("live:12", "movie:3", "series:4") everywhere.
+    public func toggleHidden(_ key: String) {
+        var h = prefs.hiddenCategories
+        if h.contains(key) { h.remove(key) } else { h.insert(key) }
+        prefs.hiddenCategories = h
+        applyLive(allLiveCategories, rawChannels)
+        applyVod(allMovieCategories, allSeriesCategories, rawMovies, rawSeries)
     }
 
     // MARK: lists
@@ -259,6 +283,27 @@ public final class Library: ObservableObject {
     /// The channels showing a game, best first.
     public func channels(for g: Game, nowTitles: [Int: String]) -> [Channel] {
         Sports.channels(for: g, in: channels) { nowTitles[$0.id] }
+    }
+
+    /// Every team of every league, for the My Teams picker (fetched once, when the picker opens).
+    @Published public private(set) var allTeams: [Team] = []
+    @Published public private(set) var teamsLoading = false
+    public func loadTeams() async {
+        if !allTeams.isEmpty || teamsLoading { return }
+        teamsLoading = true
+        defer { teamsLoading = false }
+        let found: [Team] = await withTaskGroup(of: [Team].self) { group in
+            for l in League.all where l.sport != "mma" {
+                group.addTask {
+                    guard let r = try? await URLSession.shared.data(from: Sports.teamsURL(l)), (r.1 as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+                    return Sports.parseTeams(r.0, league: l)
+                }
+            }
+            var all: [Team] = []
+            for await t in group { all += t }
+            return all
+        }
+        allTeams = found
     }
 
     public func toggleTeam(_ t: Team) { prefs.toggleTeam(t); teamsVersion += 1 }

@@ -257,6 +257,7 @@ struct LiveFullScreen: View {
     /// The info hides by itself after a few seconds.
     private func poke() {
         hideTask?.cancel()
-        hideTask = Task { try? await Task.sleep(nanoseconds: 5_000_000_000); if !Task.isCancelled { withAnimation { showInfo = false } } }
+        let secs = UInt64(max(library.prefs.overlaySecs, 2))
+        hideTask = Task { try? await Task.sleep(nanoseconds: secs * 1_000_000_000); if !Task.isCancelled { withAnimation { showInfo = false } } }
     }
 }

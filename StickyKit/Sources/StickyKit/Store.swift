@@ -54,6 +54,17 @@ public final class Prefs {
         myTeams = list
     }
 
+    /// Categories hidden from the lists ("live:12", "movie:3", "series:4").
+    public var hiddenCategories: Set<String> { get { Set(d.stringArray(forKey: "hiddenCats") ?? []) } set { d.set(Array(newValue), forKey: "hiddenCats") } }
+    /// Home rows turned off (see HomeRow in the app).
+    public var hiddenHomeRows: Set<String> { get { Set(d.stringArray(forKey: "hiddenHomeRows") ?? []) } set { d.set(Array(newValue), forKey: "hiddenHomeRows") } }
+    /// Open straight into the last channel when the app starts.
+    public var autoplayLast: Bool { get { d.bool(forKey: "autoplayLast") } set { d.set(newValue, forKey: "autoplayLast") } }
+    /// Live scores on the game cards (from ESPN).
+    public var liveScores: Bool { get { d.object(forKey: "liveScores") as? Bool ?? true } set { d.set(newValue, forKey: "liveScores") } }
+    /// Seconds the channel info stays on screen in full-screen live TV.
+    public var overlaySecs: Int { get { (d.object(forKey: "overlaySecs") as? Int) ?? 5 } set { d.set(newValue, forKey: "overlaySecs") } }
+
     // settings
     public var guideOffsetHours: Int { get { d.integer(forKey: "epgOffsetHours") } set { d.set(newValue, forKey: "epgOffsetHours") } }
     public var clock24: Bool { get { d.bool(forKey: "clock24") } set { d.set(newValue, forKey: "clock24") } }

@@ -52,6 +52,24 @@ public enum Sports {
         return URL(string: "\(base)/apis/site/v2/sports/\(sportPath)/\(l.id)/scoreboard?dates=\(f.string(from: day))")!
     }
 
+    public static func teamsURL(_ l: League) -> URL {
+        URL(string: "\(base)/apis/site/v2/sports/\(l.sport)/\(l.id)/teams?limit=1000")!
+    }
+
+    /// Every team in a league (for picking My Teams).
+    public static func parseTeams(_ data: Data, league: League) -> [Team] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? JSONObj,
+              let sport = (root["sports"] as? [Any])?.first as? JSONObj,
+              let lg = (sport["leagues"] as? [Any])?.first as? JSONObj,
+              let teams = lg["teams"] as? [Any] else { return [] }
+        return teams.compactMap { ($0 as? JSONObj)?.obj("team") }.compactMap { t in
+            guard let id = t.str("id") else { return nil }
+            let name = t.str("displayName") ?? t.str("name") ?? "?"
+            return Team(id: "\(league.id):\(id)", name: name, short: t.str("shortDisplayName") ?? name,
+                        abbr: t.str("abbreviation") ?? "", logo: (t["logos"] as? [Any])?.compactMap { ($0 as? JSONObj)?.str("href") }.first, league: league.id)
+        }.sorted { $0.name < $1.name }
+    }
+
     /// One league's games today (lenient: anything missing is skipped).
     public static func parseScoreboard(_ data: Data, league: League) -> [Game] {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? JSONObj, let events = root["events"] as? [Any] else { return [] }

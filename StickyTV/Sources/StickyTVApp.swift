@@ -43,6 +43,8 @@ struct RootView: View {
     @StateObject private var nav = Nav()
     @State private var account: Account?
     @State private var started = false
+    @State private var autoplayed = false
+    @AppStorage("showClock") private var showClock = true
 
     var body: some View {
         Group {
@@ -57,7 +59,7 @@ struct RootView: View {
                     Rail(nav: nav)
                     ZStack(alignment: .topTrailing) {
                         page.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        ClockView().padding(.top, 6).padding(.trailing, 14).allowsHitTesting(false)
+                        if showClock { ClockView().padding(.top, 6).padding(.trailing, 14).allowsHitTesting(false) }
                     }
                 }
                 .environmentObject(nav)
@@ -65,6 +67,16 @@ struct RootView: View {
         }
         .background(Nova.bg.ignoresSafeArea())
         .fullScreenCover(isPresented: $live.fullScreen) { LiveFullScreen().environmentObject(library).environmentObject(nav) }
+        .onChange(of: library.channels.count) { n in
+            // Settings › Player › Play last channel at start
+            guard n > 0, !autoplayed else { return }
+            autoplayed = true
+            if library.prefs.autoplayLast, live.channel == nil, let c = library.channels.first(where: { $0.id == library.prefs.lastChannel }) {
+                nav.section = .live
+                live.play(c, in: library.channelsByCat[c.categoryId] ?? library.channels)
+                live.fullScreen = true
+            }
+        }
         .onAppear {
             guard !started else { return }
             started = true

@@ -1,11 +1,21 @@
 import SwiftUI
 import StickyKit
 
+/// The Home rows, in the Fire TV app's order; each can be turned off in Settings › Home screen.
+enum HomeRow: String, CaseIterable {
+    case myteams = "My Teams", livesports = "Live sports now", continueWatching = "Continue watching", favchannels = "Favourite channels",
+         recentchannels = "Recently watched channels", newmovies = "New movies", newshows = "Latest shows"
+}
+
 /// Home, with the Fire TV app's rows: favourite channels, recently watched, continue watching, new movies, latest shows.
 struct HomeView: View {
     @EnvironmentObject var library: Library
     @EnvironmentObject var nav: Nav
     @ObservedObject private var live = LivePlayer.shared
+    @State private var nowTitles: [Int: String] = [:]
+    @AppStorage("homeRowsVersion") private var rowsVersion = 0
+
+    private func on(_ r: HomeRow) -> Bool { _ = rowsVersion; return !library.prefs.hiddenHomeRows.contains(r.rawValue) }
 
     var body: some View {
         NavigationStack {
@@ -28,23 +38,31 @@ struct HomeView: View {
                             .padding(.horizontal, 16)
                     }
 
-                    let favs = library.favoriteChannels()
+                    // sports first, as on the Fire TV: your teams' games today, then games on now
+                    let mine = library.myTeamIds
+                    let _ = library.teamsVersion
+                    let teamGames = Sports.sorted(library.games.filter { mine.contains($0.home.id) || mine.contains($0.away.id) }, myTeams: mine)
+                    if on(.myteams) && !teamGames.isEmpty { gameRow("My Teams", teamGames) }
+                    let liveGames = Sports.sorted(library.games.filter { $0.state == .live }, myTeams: mine)
+                    if on(.livesports) && !liveGames.isEmpty { gameRow("Live sports now", Array(liveGames.prefix(20))) }
+
+                    let favs = on(.favchannels) ? library.favoriteChannels() : []
                     if !favs.isEmpty { channelRow("Favourite channels", favs) }
-                    let recent = library.recentChannels()
+                    let recent = on(.recentchannels) ? library.recentChannels() : []
                     if !recent.isEmpty { channelRow("Recently watched channels", recent) }
 
-                    let cont = continueWatching()
+                    let cont = on(.continueWatching) ? continueWatching() : []
                     if !cont.isEmpty {
                         row("Continue watching") {
                             ForEach(cont) { m in NavigationLink(value: m) { PosterCard(movie: m, progress: progress(m)) }.buttonStyle(.plain) }
                         }
                     }
                     let newMovies = Array(library.movies.sorted { $0.added > $1.added }.prefix(20))
-                    if !newMovies.isEmpty {
+                    if on(.newmovies) && !newMovies.isEmpty {
                         row("New movies") { ForEach(newMovies) { m in NavigationLink(value: m) { PosterCard(movie: m) }.buttonStyle(.plain) } }
                     }
                     let shows = Array(library.series.sorted { $0.updated > $1.updated }.prefix(20))
-                    if !shows.isEmpty {
+                    if on(.newshows) && !shows.isEmpty {
                         row("Latest shows") { ForEach(shows) { s in NavigationLink(value: s) { PosterCard(series: s) }.buttonStyle(.plain) } }
                     }
                     if favs.isEmpty && recent.isEmpty && library.channels.isEmpty, case .failed(let msg) = library.state {
@@ -57,6 +75,25 @@ struct HomeView: View {
             .navigationDestination(for: Series.self) { ShowInfoView(series: $0) }
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { if let a = library.prefs.activeAccount { library.load(a) } }
+            .task {
+                // the sports rows keep their scores up to date while Home is open
+                while !Task.isCancelled {
+                    if library.prefs.liveScores { await library.refreshScores() }
+                    nowTitles = library.nowTitles()
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                }
+            }
+        }
+    }
+
+    private func gameRow(_ title: String, _ games: [Game]) -> some View {
+        row(title) {
+            ForEach(games) { g in
+                let chs = library.channels(for: g, nowTitles: nowTitles)
+                GameCard(game: g, channels: chs, mine: library.myTeamIds) { c in live.play(c, in: chs); live.fullScreen = true }
+                    .frame(width: 250)
+                    .onTapGesture { if let c = chs.first { live.play(c, in: chs); live.fullScreen = true } else { nav.section = .sports } }
+            }
         }
     }
 

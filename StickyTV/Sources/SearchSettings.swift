@@ -73,7 +73,10 @@ struct SearchView: View {
     }
 }
 
-private enum SettingsTab: String, CaseIterable { case look = "Look & feel", guide = "TV guide", account = "Profiles & logins", about = "About" }
+private enum SettingsTab: String, CaseIterable {
+    case look = "Look & feel", home = "Home screen", player = "Player", guide = "TV guide", sports = "Sports",
+         hide = "Hide & unhide", account = "Profiles & logins", about = "About"
+}
 
 /// Settings as on the Fire TV: the sections down the left, the chosen one on the right.
 struct SettingsView: View {
@@ -81,28 +84,39 @@ struct SettingsView: View {
     @EnvironmentObject var library: Library
     @State private var tab = SettingsTab.look
     @State private var confirm = false
+    @State private var adding = false
+    @State private var hideKind = Kind.live
+    @State private var tick = 0                 // redraws after a setting kept in Prefs changes
     @AppStorage("appLogo") private var logo = AppLogo.graffiti.rawValue
     @AppStorage("clock24") private var clock24 = false
+    @AppStorage("showClock") private var showClock = true
+    @AppStorage("homeRowsVersion") private var rowsVersion = 0
     @State private var iconError: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SETTINGS").font(.system(size: 20, weight: .black)).foregroundStyle(Nova.text).padding(.bottom, 8)
-                ForEach(SettingsTab.allCases, id: \.self) { t in
-                    Button { tab = t } label: {
-                        Text(t.rawValue).font(.system(size: 14, weight: tab == t ? .bold : .medium)).foregroundStyle(tab == t ? Nova.accent : Nova.text)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 9)
-                            .background(tab == t ? Nova.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                    }.buttonStyle(.plain)
-                }
-                Spacer()
-            }.frame(width: 180).padding(.leading, 12).padding(.top, 8)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SETTINGS").font(.system(size: 20, weight: .black)).foregroundStyle(Nova.text).padding(.bottom, 6)
+                    ForEach(SettingsTab.allCases, id: \.self) { t in
+                        Button { tab = t } label: {
+                            Text(t.rawValue).font(.system(size: 14, weight: tab == t ? .bold : .medium)).foregroundStyle(tab == t ? Nova.accent : Nova.text)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(tab == t ? Nova.accent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        }.buttonStyle(.plain)
+                    }
+                }.padding(.top, 8)
+            }.frame(width: 180).padding(.leading, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    let _ = tick
                     switch tab {
                     case .look: lookPage
+                    case .home: homePage
+                    case .player: playerPage
                     case .guide: guidePage
+                    case .sports: sportsPage
+                    case .hide: hidePage
                     case .account: accountPage
                     case .about: aboutPage
                     }
@@ -110,8 +124,17 @@ struct SettingsView: View {
             }
         }
         .background(Nova.bg.ignoresSafeArea())
-        .confirmationDialog("Sign out of this provider?", isPresented: $confirm, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of this login?", isPresented: $confirm, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { onSignOut() }
+        }
+        .sheet(isPresented: $adding) {
+            LoginView { a in
+                adding = false
+                library.prefs.saveAccount(a)
+                LivePlayer.shared.stop()
+                library.load(a, force: true)
+                tick += 1
+            }
         }
     }
 
@@ -132,7 +155,34 @@ struct SettingsView: View {
         }
         if let iconError { Text(iconError).font(.caption).foregroundStyle(Nova.live) }
         SectionTitle(text: "Screen").padding(.top, 12)
+        SettingRow(title: "Show clock", value: showClock ? "On" : "Off") { showClock.toggle() }
         SettingRow(title: "Clock style", value: clock24 ? "24-hour" : "12-hour") { clock24.toggle() }
+    }
+
+    @ViewBuilder private var homePage: some View {
+        SectionTitle(text: "Home screen rows")
+        Text("Turn rows on or off. They appear in this order.").font(.caption).foregroundStyle(Nova.muted)
+        ForEach(HomeRow.allCases, id: \.self) { r in
+            let hidden = library.prefs.hiddenHomeRows.contains(r.rawValue)
+            SettingRow(title: r.rawValue, value: hidden ? "Off" : "On") {
+                var h = library.prefs.hiddenHomeRows
+                if hidden { h.remove(r.rawValue) } else { h.insert(r.rawValue) }
+                library.prefs.hiddenHomeRows = h
+                rowsVersion += 1; tick += 1
+            }
+        }
+    }
+
+    @ViewBuilder private var playerPage: some View {
+        SectionTitle(text: "Live TV")
+        SettingRow(title: "Play last channel at start", value: library.prefs.autoplayLast ? "On" : "Off", help: "Jump straight into live TV when the app opens.") {
+            library.prefs.autoplayLast.toggle(); tick += 1
+        }
+        SettingRow(title: "Channel info shows for", value: "\(library.prefs.overlaySecs) seconds", help: "In full screen, after changing channel or tapping the picture.") {
+            let opts = [3, 5, 8, 12]
+            library.prefs.overlaySecs = opts[((opts.firstIndex(of: library.prefs.overlaySecs) ?? 1) + 1) % opts.count]; tick += 1
+        }
+        Text("Live channels play in HLS, the format iPhones play natively.").font(.caption).foregroundStyle(Nova.muted).padding(.top, 4)
     }
 
     @ViewBuilder private var guidePage: some View {
@@ -142,25 +192,76 @@ struct SettingsView: View {
             var h = library.prefs.guideOffsetHours + 1
             if h > 12 { h = -12 }
             library.prefs.guideOffsetHours = h
-            library.loadGuide(force: true)
+            library.loadGuide(force: true); tick += 1
         }
         SettingRow(title: "Refresh TV guide now", value: library.guideStatus ?? "Ready", help: "Downloads the guide from your provider again.") {
             library.loadGuide(force: true)
         }
     }
 
-    @ViewBuilder private var accountPage: some View {
-        SectionTitle(text: "This login")
-        if let a = library.prefs.activeAccount {
-            InfoRow(k: "Name", v: a.name); InfoRow(k: "Server", v: a.server); InfoRow(k: "Username", v: a.username)
+    @ViewBuilder private var sportsPage: some View {
+        SectionTitle(text: "Sports")
+        SettingRow(title: "Live scores", value: library.prefs.liveScores ? "On" : "Off", help: "Scores and game clocks on the game cards, from ESPN. Checked once a minute.") {
+            library.prefs.liveScores.toggle(); tick += 1
         }
+        SectionTitle(text: "My Teams", trailing: "\(library.prefs.myTeams.count) picked").padding(.top, 12)
+        TeamPicker(showsTitle: false)
+    }
+
+    @ViewBuilder private var hidePage: some View {
+        SectionTitle(text: "Hide & unhide categories")
+        Text("Hidden categories disappear from Live TV, Movies and TV Shows (and their channels and titles from everywhere else).").font(.caption).foregroundStyle(Nova.muted)
+        HStack(spacing: 8) {
+            Chip(text: "Live TV", selected: hideKind == .live) { hideKind = .live }
+            Chip(text: "Movies", selected: hideKind == .movie) { hideKind = .movie }
+            Chip(text: "TV Shows", selected: hideKind == .series) { hideKind = .series }
+        }
+        let cats = hideKind == .live ? library.allLiveCategories : hideKind == .movie ? library.allMovieCategories : library.allSeriesCategories
+        let prefix = hideKind == .live ? "live" : hideKind == .movie ? "movie" : "series"
+        let hidden = library.prefs.hiddenCategories
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 8)], spacing: 8) {
+            ForEach(cats) { c in
+                let key = "\(prefix):\(c.id)"
+                Button { library.toggleHidden(key); tick += 1 } label: {
+                    HStack {
+                        Image(systemName: hidden.contains(key) ? "eye.slash" : "eye").foregroundStyle(hidden.contains(key) ? Nova.faint : Nova.accent)
+                        Text(c.name).font(.caption.bold()).foregroundStyle(hidden.contains(key) ? Nova.faint : Nova.text).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }.padding(10).background(Nova.panel, in: RoundedRectangle(cornerRadius: 10))
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder private var accountPage: some View {
+        SectionTitle(text: "Logins")
+        let active = library.prefs.activeAccount?.id
+        ForEach(library.prefs.accounts) { a in
+            HStack(spacing: 10) {
+                Image(systemName: a.id == active ? "checkmark.circle.fill" : "circle").foregroundStyle(a.id == active ? Nova.accent : Nova.faint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(a.name).font(.subheadline.bold()).foregroundStyle(Nova.text)
+                    Text("\(a.username) · \(a.server)").font(.caption).foregroundStyle(Nova.muted).lineLimit(1)
+                }
+                Spacer()
+                if a.id != active {
+                    Button("Switch") {
+                        LivePlayer.shared.stop()
+                        library.prefs.activeAccountId = a.id
+                        library.load(a); tick += 1
+                    }.font(.caption.bold()).buttonStyle(.bordered)
+                }
+            }.padding(12).background(Nova.panel, in: RoundedRectangle(cornerRadius: 14))
+        }
+        SettingRow(title: "Add a login", value: "") { adding = true }
         if let i = library.info {
+            SectionTitle(text: "This login").padding(.top, 12)
             InfoRow(k: "Status", v: i.status)
             InfoRow(k: "Expires", v: i.expires?.formatted(date: .abbreviated, time: .omitted) ?? "Never")
             InfoRow(k: "Screens at once", v: "\(i.maxConnections)")
         }
         SettingRow(title: "Reload channels, movies and shows", value: "") { if let a = library.prefs.activeAccount { library.load(a) } }
-        SettingRow(title: "Sign out", value: "", danger: true) { confirm = true }
+        SettingRow(title: "Sign out of this login", value: "", danger: true) { confirm = true }
     }
 
     @ViewBuilder private var aboutPage: some View {
@@ -169,6 +270,7 @@ struct SettingsView: View {
         InfoRow(k: "Channels", v: "\(library.channels.count)")
         InfoRow(k: "Movies", v: "\(library.movies.count)")
         InfoRow(k: "Shows", v: "\(library.series.count)")
+        InfoRow(k: "Coming next", v: "Cast & actors, recordings, Multiview, backup")
     }
 
     private func pick(_ l: AppLogo) {
