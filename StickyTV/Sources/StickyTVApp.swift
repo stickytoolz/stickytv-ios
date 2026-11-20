@@ -80,7 +80,7 @@ struct RootView: View {
         case .home: HomeView()
         case .live: LiveView()
         case .multiview: ComingSoon(title: "Multiview", text: "Up to four channels at once is coming in a later update.")
-        case .sports: ComingSoon(title: "Sports", text: "Live scores, games on now and My Teams are coming in the next update.")
+        case .sports: SportsView()
         case .movies: BrowseView(kind: .movie).id("movies")
         case .shows: BrowseView(kind: .series).id("shows")
         case .recordings: ComingSoon(title: "Recordings", text: "Recording is coming in a later update.")
@@ -102,22 +102,22 @@ struct Rail: View {
     @AppStorage("appLogo") private var logo = AppLogo.graffiti.rawValue
     var body: some View {
         VStack(spacing: 0) {
-            Image((AppLogo(rawValue: logo) ?? .graffiti).image).resizable().scaledToFit().frame(width: 40, height: 34).padding(.vertical, 6)
+            Image((AppLogo(rawValue: logo) ?? .graffiti).image).resizable().scaledToFit().frame(width: 34, height: 28).padding(.vertical, 3)
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 6) {
+                VStack(spacing: 3) {
                     ForEach(AppSection.allCases, id: \.self) { s in
                         Button { nav.section = s } label: {
-                            Image(systemName: s.icon).font(.system(size: 18, weight: .semibold))
-                                .frame(width: 46, height: 38)
+                            Image(systemName: s.icon).font(.system(size: 15, weight: .semibold))
+                                .frame(width: 42, height: 31)
                                 .foregroundStyle(nav.section == s ? Nova.accent : Nova.muted)
                                 .background(nav.section == s ? Nova.accent.opacity(0.16) : Nova.panel, in: RoundedRectangle(cornerRadius: 11))
                                 .overlay(RoundedRectangle(cornerRadius: 11).stroke(nav.section == s ? Nova.accent.opacity(0.6) : Nova.line))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(s.label)
-                        if s == .search { Spacer().frame(height: 4) }
+                        if s == .search { Spacer().frame(height: 2) }
                     }
-                }.padding(.vertical, 4)
+                }.padding(.vertical, 2)
             }
             // which version this is (handy when sideloading a new one)
             Text("v" + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"))

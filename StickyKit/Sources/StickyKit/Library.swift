@@ -220,6 +220,49 @@ public final class Library: ObservableObject {
         let next = cur == nil ? list[i] : (i + 1 < list.count ? list[i + 1] : nil)
         return (cur, next)
     }
+
+    // MARK: sports
+
+    @Published public private(set) var games: [Game] = []
+    @Published public private(set) var scoresUpdated: Date?
+    @Published public private(set) var scoresLoading = false
+    @Published public var teamsVersion = 0
+
+    /// Today's games in every league, from ESPN (all at once; a league that fails is just left out).
+    public func refreshScores() async {
+        if scoresLoading { return }
+        scoresLoading = true
+        defer { scoresLoading = false }
+        let found: [Game] = await withTaskGroup(of: [Game].self) { group in
+            for l in League.all {
+                group.addTask {
+                    guard let r = try? await URLSession.shared.data(from: Sports.scoreboardURL(l)),
+                          (r.1 as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+                    return Sports.parseScoreboard(r.0, league: l)
+                }
+            }
+            var all: [Game] = []
+            for await g in group { all += g }
+            return all
+        }
+        if !found.isEmpty || games.isEmpty { games = found }
+        scoresUpdated = Date()
+    }
+
+    /// What's on now on every channel that has a guide (worked out once, for matching games to channels).
+    public func nowTitles(at now: Date = Date()) -> [Int: String] {
+        var out: [Int: String] = [:]
+        for c in channels { if let t = nowNext(c, at: now).now?.title { out[c.id] = t } }
+        return out
+    }
+
+    /// The channels showing a game, best first.
+    public func channels(for g: Game, nowTitles: [Int: String]) -> [Channel] {
+        Sports.channels(for: g, in: channels) { nowTitles[$0.id] }
+    }
+
+    public func toggleTeam(_ t: Team) { prefs.toggleTeam(t); teamsVersion += 1 }
+    public var myTeamIds: Set<String> { Set(prefs.myTeams.map(\.id)) }
 }
 
 /// Unpacks a .gz file (guides are often sent gzipped).

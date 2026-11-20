@@ -46,6 +46,14 @@ public final class Prefs {
         if dur > 0 { d.set(dur, forKey: "dur." + key) }
     }
 
+    // My Teams: their games come first on Sports and Home
+    public var myTeams: [Team] { get { codable("myTeams") ?? [] } set { setCodable("myTeams", newValue) } }
+    public func toggleTeam(_ t: Team) {
+        var list = myTeams
+        if let i = list.firstIndex(where: { $0.id == t.id }) { list.remove(at: i) } else { list.append(t) }
+        myTeams = list
+    }
+
     // settings
     public var guideOffsetHours: Int { get { d.integer(forKey: "epgOffsetHours") } set { d.set(newValue, forKey: "epgOffsetHours") } }
     public var clock24: Bool { get { d.bool(forKey: "clock24") } set { d.set(newValue, forKey: "clock24") } }
