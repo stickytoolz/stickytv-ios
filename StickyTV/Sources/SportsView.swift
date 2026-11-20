@@ -70,7 +70,7 @@ struct SportsView: View {
                             .contextMenu {
                                 ForEach([g.away, g.home], id: \.id) { t in
                                     Button { library.toggleTeam(t) } label: {
-                                        library.myTeamIds.contains(t.id) ? Label("Remove \(t.short) from My Teams", systemImage: "star.slash") : Label("Add \(t.short) to My Teams", systemImage: "star")
+                                        library.myTeamIds.contains(t.key) ? Label("Remove \(t.short) from My Teams", systemImage: "star.slash") : Label("Add \(t.short) to My Teams", systemImage: "star")
                                     }
                                 }
                             }
@@ -145,13 +145,13 @@ struct GameCard: View {
         .contentShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var isMine: Bool { mine.contains(game.home.id) || mine.contains(game.away.id) }
+    private var isMine: Bool { mine.contains(game.home.key) || mine.contains(game.away.key) }
 
     private func teamRow(_ t: Team, _ score: String?, winning: Bool) -> some View {
         HStack(spacing: 10) {
             NetImage(url: t.logo, fallback: t.abbr, fit: true).frame(width: 26, height: 26)
             Text(t.short).font(.subheadline.weight(winning || game.state == .pre ? .bold : .regular)).foregroundStyle(Nova.text).lineLimit(1)
-            if mine.contains(t.id) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Nova.gold) }
+            if mine.contains(t.key) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Nova.gold) }
             Spacer()
             if let score { Text(score).font(.system(size: 18, weight: .heavy).monospacedDigit()).foregroundStyle(winning ? Nova.text : Nova.muted) }
         }
@@ -209,7 +209,7 @@ struct TeamPicker: View {
             } else if library.allTeams.isEmpty {
                 Text("Couldn't get the team list. Check the internet connection.").font(.caption).foregroundStyle(Nova.live)
             } else {
-                let picked = Set(mine.map(\.id))
+                let picked = Set(mine.map(\.key))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], spacing: 8) {
                     ForEach(results.prefix(300)) { t in
                         Button { library.toggleTeam(t) } label: {
@@ -220,9 +220,9 @@ struct TeamPicker: View {
                                     Text(League.all.first { $0.id == t.league }?.name ?? "").font(.system(size: 10)).foregroundStyle(Nova.muted)
                                 }
                                 Spacer(minLength: 0)
-                                Image(systemName: picked.contains(t.id) ? "star.fill" : "star").foregroundStyle(picked.contains(t.id) ? Nova.gold : Nova.faint)
+                                Image(systemName: picked.contains(t.key) ? "star.fill" : "star").foregroundStyle(picked.contains(t.key) ? Nova.gold : Nova.faint)
                             }.padding(8).background(Nova.panel, in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(picked.contains(t.id) ? Nova.gold.opacity(0.5) : Nova.line))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(picked.contains(t.key) ? Nova.gold.opacity(0.5) : Nova.line))
                         }.buttonStyle(.plain)
                     }
                 }

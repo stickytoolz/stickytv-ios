@@ -50,7 +50,7 @@ public final class Prefs {
     public var myTeams: [Team] { get { codable("myTeams") ?? [] } set { setCodable("myTeams", newValue) } }
     public func toggleTeam(_ t: Team) {
         var list = myTeams
-        if let i = list.firstIndex(where: { $0.id == t.id }) { list.remove(at: i) } else { list.append(t) }
+        if let i = list.firstIndex(where: { $0.key == t.key }) { list.remove(at: i) } else { list.append(t) }
         myTeams = list
     }
 

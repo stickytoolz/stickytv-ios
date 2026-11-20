@@ -76,4 +76,22 @@ final class SportsTests: XCTestCase {
         let up = Sports.upcoming(season, now: now, perTeam: 2, teams: ["nba:NY"])
         XCTAssertEqual(up.map(\.id), ["now", "g1"], "on now, then the next ones; finished and other teams' games left out")
     }
+
+    /// Napoli saved from Serie A: its Champions League games count as yours too, and the schedule asks for fixtures to come.
+    func testSoccerClubInEveryCompetition() {
+        let seriaA = League.all.first { $0.id == "ita.1" }!
+        let napoli = Team(id: "ita.1:114", name: "Napoli", short: "Napoli", abbr: "NAP", logo: nil, league: "ita.1")
+        XCTAssertEqual(napoli.key, "soccer:114")
+        XCTAssertTrue(Sports.scheduleURL(napoli)!.absoluteString.hasSuffix("/soccer/all/teams/114/schedule?fixture=true"))
+        let json = #"{"events":[{"id":"9","date":"2026-11-24T20:00Z","league":{"slug":"uefa.champions","shortName":"UEFA Champions League"},"competitions":[{"competitors":[{"homeAway":"home","team":{"id":"382","displayName":"Manchester City","shortDisplayName":"Man City"}},{"homeAway":"away","team":{"id":"114","displayName":"Napoli","shortDisplayName":"Napoli"}}],"status":{"type":{"state":"pre"}}}]}]}"#
+        let g = Sports.parseScoreboard(Data(json.utf8), league: seriaA)
+        XCTAssertEqual(g.first?.league.name, "Champions League", "labelled with its own competition")
+        XCTAssertEqual(g.first?.id, "uefa.champions:9", "the same game as on the Champions League scoreboard")
+        XCTAssertEqual(g.first?.away.key, napoli.key)
+        let up = Sports.upcoming(g, now: parseXmltvTime("20261120000000")!, teams: [napoli.key])
+        XCTAssertEqual(up.count, 1)
+        let p = Prefs(defaults: UserDefaults(suiteName: "t-\(UUID())")!)
+        p.toggleTeam(napoli); p.toggleTeam(g[0].away)
+        XCTAssertTrue(p.myTeams.isEmpty, "the Champions League Napoli is the same team")
+    }
 }

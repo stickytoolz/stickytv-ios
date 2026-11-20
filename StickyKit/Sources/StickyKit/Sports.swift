@@ -20,6 +20,12 @@ public struct League: Hashable, Identifiable {
 }
 
 public struct Team: Codable, Hashable, Identifiable {
+    /// Who the team is in every competition: soccer clubs play in several (Napoli in Serie A and the Champions League),
+    /// so they go by ESPN's club number alone; other sports by league and number.
+    public var key: String {
+        guard league.contains("."), let n = id.split(separator: ":").last else { return id }
+        return "soccer:\(n)"
+    }
     public var id: String           // ESPN id, with the league: "nfl:12"
     public var name: String         // "Kansas City Chiefs"
     public var short: String        // "Chiefs"
@@ -55,6 +61,8 @@ public enum Sports {
     /// A team's whole season (past and upcoming games).
     public static func scheduleURL(_ t: Team) -> URL? {
         guard let l = League.all.first(where: { $0.id == t.league }), let espnId = t.id.split(separator: ":").last else { return nil }
+        // soccer: every competition (league, cups, Champions League), and the fixtures to come (ESPN's default is results only)
+        if l.sport == "soccer" { return URL(string: "\(base)/apis/site/v2/sports/soccer/all/teams/\(espnId)/schedule?fixture=true") }
         return URL(string: "\(base)/apis/site/v2/sports/\(l.sport)/\(l.id)/teams/\(espnId)/schedule")
     }
 
@@ -63,7 +71,7 @@ public enum Sports {
         var count: [String: Int] = [:]
         var out: [Game] = []
         for g in schedule.sorted(by: { $0.start < $1.start }) where g.state == .live || (g.state == .pre && g.start > now.addingTimeInterval(-4 * 3600)) {
-            let ids = [g.home.id, g.away.id].filter { teams.contains($0) }
+            let ids = [g.home.key, g.away.key].filter { teams.contains($0) }
             guard !ids.isEmpty, ids.contains(where: { (count[$0] ?? 0) < perTeam }) else { continue }
             ids.forEach { count[$0, default: 0] += 1 }
             out.append(g)
@@ -95,6 +103,11 @@ public enum Sports {
         let iso = ISO8601DateFormatter()
         let isoNoSec = DateFormatter(); isoNoSec.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"; isoNoSec.timeZone = TimeZone(identifier: "UTC")
         return events.compactMap { $0 as? JSONObj }.compactMap { e in
+            // a team's schedule mixes competitions: each game says which one it is
+            var league = league
+            if let lo = e.obj("league"), let slug = lo.str("slug"), slug != league.id {
+                league = League.all.first { $0.id == slug } ?? League(slug, lo.str("shortName") ?? lo.str("name") ?? slug, league.sport)
+            }
             guard let id = e.str("id"), let comp = (e["competitions"] as? [Any])?.first as? JSONObj,
                   let comps = comp["competitors"] as? [Any], comps.count >= 2 else { return nil }
             let ds = e.str("date") ?? comp.str("date") ?? ""
@@ -165,7 +178,7 @@ public enum Sports {
     /// The order on the Sports page: your teams' games first, then live, then about to start, then finished.
     public static func sorted(_ games: [Game], myTeams: Set<String>) -> [Game] {
         func rank(_ g: Game) -> Int {
-            let mine = myTeams.contains(g.home.id) || myTeams.contains(g.away.id)
+            let mine = myTeams.contains(g.home.key) || myTeams.contains(g.away.key)
             let s = g.state == .live ? 0 : g.state == .pre ? 1 : 2
             return (mine ? 0 : 3) + s
         }

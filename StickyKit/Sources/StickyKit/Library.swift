@@ -313,7 +313,7 @@ public final class Library: ObservableObject {
 
     public func refreshSchedules(force: Bool = false) async {
         let teams = prefs.myTeams
-        let ids = Set(teams.map(\.id))
+        let ids = Set(teams.map(\.key))
         if ids.isEmpty { teamSchedule = []; scheduleFor = []; return }
         if !force && ids == scheduleFor && Date().timeIntervalSince(scheduleAt) < 3 * 3600 { return }
         let found: [Game] = await withTaskGroup(of: [Game].self) { group in
@@ -336,7 +336,7 @@ public final class Library: ObservableObject {
     /// My Teams games to show: on now and coming up (today's live scores where ESPN has them), soonest first.
     public func myTeamGames() -> [Game] {
         let mine = myTeamIds
-        let today = games.filter { mine.contains($0.home.id) || mine.contains($0.away.id) }
+        let today = games.filter { mine.contains($0.home.key) || mine.contains($0.away.key) }
         let todayIds = Set(today.map(\.id))
         let merged = today.filter { $0.state != .post } + teamSchedule.filter { !todayIds.contains($0.id) }
         let up = Sports.upcoming(merged, teams: mine)
@@ -347,7 +347,8 @@ public final class Library: ObservableObject {
         prefs.toggleTeam(t); teamsVersion += 1
         Task { await refreshSchedules(force: true) }
     }
-    public var myTeamIds: Set<String> { Set(prefs.myTeams.map(\.id)) }
+    /// Your teams, by Team.key (the same club in every competition).
+    public var myTeamIds: Set<String> { Set(prefs.myTeams.map(\.key)) }
 }
 
 /// Unpacks a .gz file (guides are often sent gzipped).
