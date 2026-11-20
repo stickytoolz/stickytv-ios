@@ -28,6 +28,8 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/StickyTV.app Payload/
           zip -qr StickyTV.ipa Payload
           ls -la StickyTV.ipa
+          echo "--- app settings (Info.plist) ---"
+          plutil -p Payload/StickyTV.app/Info.plist
       - uses: actions/upload-artifact@v4
         with:
           name: StickyTV-ipa

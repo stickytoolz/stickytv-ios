@@ -119,6 +119,9 @@ struct Rail: View {
                     }
                 }.padding(.vertical, 4)
             }
+            // which version this is (handy when sideloading a new one)
+            Text("v" + ((Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"))
+                .font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(Nova.faint).padding(.bottom, 4)
         }
         .frame(width: 62)
         .background(LinearGradient(colors: [Nova.bg2, Nova.bg], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
