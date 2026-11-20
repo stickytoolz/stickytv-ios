@@ -6,6 +6,10 @@ options:
 packages:
   StickyKit:
     path: StickyKit
+  # VLC, the player engine (plays MPEG-TS / HLS channels and MKV movies like the Fire TV does)
+  VLCKitSPM:
+    url: https://github.com/tylerjonesio/vlckit-spm
+    exactVersion: 3.6.0
 targets:
   StickyTV:
     type: application
@@ -15,11 +19,13 @@ targets:
       - StickyTV/Assets.xcassets
     dependencies:
       - package: StickyKit
+      - package: VLCKitSPM
+        product: VLCKitSPM
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tv.sticky.player
         PRODUCT_NAME: StickyTV
-        MARKETING_VERSION: "1.9"
+        MARKETING_VERSION: "2.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"

@@ -182,6 +182,11 @@ struct SettingsView: View {
             let opts = [3, 5, 8, 12]
             library.prefs.overlaySecs = opts[((opts.firstIndex(of: library.prefs.overlaySecs) ?? 1) + 1) % opts.count]; tick += 1
         }
+        SettingRow(title: "Player engine", value: Prefs.playerEngines.first { $0.id == library.prefs.playerEngine }?.name ?? "VLC · MPEG-TS",
+                   help: "VLC · MPEG-TS is what works on the Fire TV. Try the others if channels freeze or won't start (VLC switches a channel that won't open to the other format by itself). Changes on the next channel.") {
+            let e = Prefs.playerEngines.map(\.id)
+            library.prefs.playerEngine = e[((e.firstIndex(of: library.prefs.playerEngine) ?? 0) + 1) % e.count]; tick += 1
+        }
         SectionTitle(text: "Buffering").padding(.top, 12)
         SettingRow(title: "Buffer", value: ["Low (fast channel changes)", "Normal", "High (slow internet)"][min(max(library.prefs.bufferMode, 0), 2)],
                    help: "A bigger buffer means fewer freezes on slow internet, and slower channel changes. Changes on the next channel.") {
@@ -206,7 +211,7 @@ struct SettingsView: View {
             }
             SettingRow(title: "Clear the list", value: "") { LivePlayer.shared.signals.clearProblems(); tick += 1 }
         }
-        Text("Live channels play in HLS, the format iPhones play natively.").font(.caption).foregroundStyle(Nova.muted).padding(.top, 4)
+        Text("Movies and shows: MP4 plays in the iPhone's own player, everything else (MKV, AVI…) in VLC.").font(.caption).foregroundStyle(Nova.muted).padding(.top, 4)
     }
 
     @ViewBuilder private var guidePage: some View {

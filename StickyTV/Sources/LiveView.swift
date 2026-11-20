@@ -215,7 +215,7 @@ struct LiveFullScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            LiveVideo(fill: fill).ignoresSafeArea().offset(y: drag / 4)
+            LiveVideo(fill: fill, isFull: true).ignoresSafeArea().offset(y: drag / 4)
             if showInfo, let c = live.channel {
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {

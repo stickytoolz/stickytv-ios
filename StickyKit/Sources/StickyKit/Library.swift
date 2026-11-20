@@ -152,7 +152,7 @@ public final class Library: ObservableObject {
     }
     public func toggleFavorite(_ key: String) { prefs.toggleFavorite(key); favoritesVersion += 1 }
 
-    public func liveURL(_ c: Channel) -> URL? { api?.liveURL(c.id) }
+    public func liveURL(_ c: Channel, format: String = "ts") -> URL? { api?.liveURL(c.id, format: format) }
     public func movieURL(_ m: Movie) -> URL? { api?.movieURL(m) }
     public func episodeURL(_ e: Episode) -> URL? { api?.episodeURL(e) }
     public func movieDetail(_ m: Movie) async throws -> MovieDetail {

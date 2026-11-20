@@ -65,6 +65,12 @@ public final class Prefs {
     /// Seconds the channel info stays on screen in full-screen live TV.
     public var overlaySecs: Int { get { (d.object(forKey: "overlaySecs") as? Int) ?? 5 } set { d.set(newValue, forKey: "overlaySecs") } }
 
+    /// The player for live TV: "vlc-ts" (VLC with MPEG-TS, what works on the Fire TV — the default), "vlc-hls" (VLC with
+    /// HLS) or "apple-hls" (the iPhone's own player with HLS).
+    public var playerEngine: String { get { d.string(forKey: "playerEngine") ?? "vlc-ts" } set { d.set(newValue, forKey: "playerEngine") } }
+    public static let playerEngines: [(id: String, name: String)] = [("vlc-ts", "VLC · MPEG-TS"), ("vlc-hls", "VLC · HLS"), ("apple-hls", "Apple · HLS")]
+    /// The stream format the chosen player asks for.
+    public var liveFormat: String { playerEngine == "vlc-ts" ? "ts" : "m3u8" }
     /// Buffer: 0 Low (fast channel changes), 1 Normal (the player decides), 2 High (slow internet).
     public var bufferMode: Int { get { (d.object(forKey: "bufferMode") as? Int) ?? 1 } set { d.set(newValue, forKey: "bufferMode") } }
     /// Weak-signal cushion: after a dropout, save 8, then 15, then 25 seconds ahead before carrying on.
