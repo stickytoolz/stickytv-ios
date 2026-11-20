@@ -187,6 +187,7 @@ struct ChannelRow: View {
                     // the playing channel's name scrolls when it's too long (like the highlighted row on the Fire TV)
                     MarqueeText(text: channel.name, font: .system(size: 13, weight: .semibold), active: playing)
                     if favorite { Image(systemName: "star.fill").foregroundStyle(Nova.gold).font(.system(size: 9)) }
+                    SignalDot(level: LivePlayer.shared.signals.level(channel.id))
                     if playing { Image(systemName: "speaker.wave.2.fill").foregroundStyle(Nova.accent).font(.system(size: 10)) }
                 }
                 if let now {
@@ -209,6 +210,7 @@ struct LiveFullScreen: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var drag: CGFloat = 0
     @State private var fill = false
+    @State private var showSignal = false
 
     var body: some View {
         ZStack {
@@ -222,6 +224,9 @@ struct LiveFullScreen: View {
                         Button { library.toggleFavorite(Prefs.liveKey(c)) } label: {
                             Image(systemName: library.prefs.isFavorite(Prefs.liveKey(c)) ? "star.fill" : "star").font(.headline)
                                 .foregroundStyle(library.prefs.isFavorite(Prefs.liveKey(c)) ? Nova.gold : .white).padding(12).background(.black.opacity(0.5), in: Circle())
+                        }
+                        Button { showSignal.toggle(); poke() } label: {
+                            Image(systemName: "cellularbars").font(.headline).foregroundStyle(showSignal ? Nova.accent : .white).padding(12).background(.black.opacity(0.5), in: Circle())
                         }
                         Button { fill.toggle() } label: {
                             Image(systemName: fill ? "rectangle.arrowtriangle.2.inward" : "rectangle.arrowtriangle.2.outward").font(.headline).padding(12).background(.black.opacity(0.5), in: Circle())
@@ -244,6 +249,9 @@ struct LiveFullScreen: View {
                     .background(LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
                 }.foregroundStyle(.white).transition(.opacity)
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showSignal { SignalWindow { showSignal = false }.padding(.top, 70).padding(.trailing, 24) }
         }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)

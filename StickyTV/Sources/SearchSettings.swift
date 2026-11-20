@@ -182,6 +182,27 @@ struct SettingsView: View {
             let opts = [3, 5, 8, 12]
             library.prefs.overlaySecs = opts[((opts.firstIndex(of: library.prefs.overlaySecs) ?? 1) + 1) % opts.count]; tick += 1
         }
+        SectionTitle(text: "Buffering").padding(.top, 12)
+        SettingRow(title: "Buffer", value: ["Low (fast channel changes)", "Normal", "High (slow internet)"][min(max(library.prefs.bufferMode, 0), 2)],
+                   help: "A bigger buffer means fewer freezes on slow internet, and slower channel changes. Changes on the next channel.") {
+            library.prefs.bufferMode = (library.prefs.bufferMode + 1) % 3; tick += 1
+        }
+        SettingRow(title: "Weak-signal cushion", value: library.prefs.cushion ? "On" : "Off",
+                   help: "On: after a channel stops for a weak signal, it saves 8, 15 then 25 seconds ahead before carrying on (plays a little behind live, fewer stops). Off: the plain player.") {
+            library.prefs.cushion.toggle(); tick += 1
+        }
+        SectionTitle(text: "Stream health").padding(.top, 12)
+        Text("Each channel's signal shows as a dot in the guide (green strong, yellow good, red weak). In full screen, the bars button opens the Channel signal window.")
+            .font(.caption).foregroundStyle(Nova.muted)
+        let problems = LivePlayer.shared.signals.problems
+        if problems.isEmpty {
+            InfoRow(k: "Recent stream problems", v: "None")
+        } else {
+            ForEach(problems.prefix(12)) { p in
+                InfoRow(k: "\(whenText(p.at)) · \(p.channel)", v: p.what)
+            }
+            SettingRow(title: "Clear the list", value: "") { LivePlayer.shared.signals.clearProblems(); tick += 1 }
+        }
         Text("Live channels play in HLS, the format iPhones play natively.").font(.caption).foregroundStyle(Nova.muted).padding(.top, 4)
     }
 

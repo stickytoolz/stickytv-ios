@@ -181,6 +181,7 @@ struct GuideView: View {
                     MarqueeText(text: c.name, font: .system(size: 11, weight: .semibold), active: playing)
                 }
                 if library.prefs.isFavorite(Prefs.liveKey(c)) { Image(systemName: "star.fill").font(.system(size: 8)).foregroundStyle(Nova.gold) }
+                SignalDot(level: live.signals.level(c.id))
             }
             .padding(.horizontal, 6).frame(width: channelW, height: rowH, alignment: .leading)
             .background(playing ? Nova.accent.opacity(0.16) : Nova.panel, in: RoundedRectangle(cornerRadius: 8))

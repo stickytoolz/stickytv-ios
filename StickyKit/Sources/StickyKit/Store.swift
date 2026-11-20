@@ -65,6 +65,11 @@ public final class Prefs {
     /// Seconds the channel info stays on screen in full-screen live TV.
     public var overlaySecs: Int { get { (d.object(forKey: "overlaySecs") as? Int) ?? 5 } set { d.set(newValue, forKey: "overlaySecs") } }
 
+    /// Buffer: 0 Low (fast channel changes), 1 Normal (the player decides), 2 High (slow internet).
+    public var bufferMode: Int { get { (d.object(forKey: "bufferMode") as? Int) ?? 1 } set { d.set(newValue, forKey: "bufferMode") } }
+    /// Weak-signal cushion: after a dropout, save 8, then 15, then 25 seconds ahead before carrying on.
+    public var cushion: Bool { get { d.bool(forKey: "cushion") } set { d.set(newValue, forKey: "cushion") } }
+
     // settings
     public var guideOffsetHours: Int { get { d.integer(forKey: "epgOffsetHours") } set { d.set(newValue, forKey: "epgOffsetHours") } }
     public var clock24: Bool { get { d.bool(forKey: "clock24") } set { d.set(newValue, forKey: "clock24") } }

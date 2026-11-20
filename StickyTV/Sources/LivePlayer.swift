@@ -32,6 +32,16 @@ final class LivePlayer: ObservableObject {
     private var watchdog: Timer?
     private static let busyWaits: [Double] = [3, 5, 8, 10, 12, 15]          // about a minute in all
 
+    // stream health (the Channel signal window and the dots)
+    let signals = SignalStore()
+    @Published private(set) var samples: [SignalSample] = []
+    @Published private(set) var level: SignalLevel = .none
+    @Published private(set) var stalls = 0                 // dropouts on this channel
+    @Published private(set) var lastStall: Date?
+    @Published private(set) var pictureSize: CGSize = .zero
+    private var cushionStalls = 0                           // dropouts since the app opened (the cushion grows with them)
+    private var sampler: Timer?
+
     private init() {
         player.automaticallyWaitsToMinimizeStalling = true
         playerObs = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
@@ -44,7 +54,8 @@ final class LivePlayer: ObservableObject {
 
     /// Plays [c] (from [list], for swiping to the next and previous channel).
     func play(_ c: Channel, in list: [Channel]) {
-        if let cur = channel, cur.id != c.id { previous = (self.list, cur) }
+        if let cur = channel, cur.id != c.id { previous = (self.list, cur); signals.remember(cur.id, level) }
+        if channel?.id != c.id { samples = []; stalls = 0; lastStall = nil; level = signals.level(c.id) ?? .none }
         self.list = list.isEmpty ? [c] : list
         if channel?.id != c.id { pictureOn = false }
         channel = c
@@ -54,8 +65,35 @@ final class LivePlayer: ObservableObject {
         start()
     }
 
+    /// Settings › Player: Buffer (Low 4 s, Normal: the player decides, High 30 s), and the weak-signal cushion on top.
+    private func bufferSeconds() -> Double {
+        let prefs = library?.prefs
+        let base: Double = switch prefs?.bufferMode ?? 1 { case 0: 4; case 2: 30; default: 0 }
+        let cushion = (prefs?.cushion ?? false) ? Cushion.seconds(afterStalls: cushionStalls) : 0
+        return max(base, cushion)
+    }
+
+    /// Once a second while a channel plays: how fast it arrives against what it needs, dropped frames, the picture size.
+    private func startSampler() {
+        sampler?.invalidate()
+        sampler = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sample() }
+        }
+    }
+
+    private func sample() {
+        guard let c = channel, let item = player.currentItem, let ev = item.accessLog()?.events.last else { return }
+        let s = SignalSample(at: Date(), observedBps: max(ev.observedBitrate, 0), indicatedBps: max(ev.indicatedBitrate, 0),
+                             droppedFrames: max(ev.numberOfDroppedVideoFrames, 0), stalls: stalls)
+        samples = Array((samples + [s]).suffix(60))
+        pictureSize = item.presentationSize
+        level = SignalMeter.level(samples, lastStall: lastStall)
+        if samples.count % 10 == 0 { signals.remember(c.id, level) }
+    }
+
     func stop() {
-        retryTask?.cancel(); watchdog?.invalidate()
+        retryTask?.cancel(); watchdog?.invalidate(); sampler?.invalidate()
+        if let c = channel { signals.remember(c.id, level) }
         player.replaceCurrentItem(with: nil)
         channel = nil; status = nil; pictureOn = false; fullScreen = false
     }
@@ -78,11 +116,12 @@ final class LivePlayer: ObservableObject {
         wasReady = false
         lastHTTPStatus = nil
         let item = AVPlayerItem(asset: AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": XtreamAPI.defaultAgent]]))
-        item.preferredForwardBufferDuration = 0          // the player decides (like the plain Fire TV player)
+        item.preferredForwardBufferDuration = bufferSeconds()
         watch(item)
         player.replaceCurrentItem(with: item)
         player.play()
         startWatchdog()
+        startSampler()
     }
 
     private func watch(_ item: AVPlayerItem) {
@@ -119,6 +158,15 @@ final class LivePlayer: ObservableObject {
             status = nil; retries = 0; busyTries = 0; wasReady = true; waitingSince = nil
         case .waitingToPlayAtSpecifiedRate:
             if waitingSince == nil { waitingSince = Date() }
+            if wasReady && status == nil, let c = channel {
+                // it was playing and stopped to wait: a dropout
+                stalls += 1; cushionStalls += 1; lastStall = Date()
+                signals.note(c.name, "Dropped out")
+                if library?.prefs.cushion == true {
+                    player.currentItem?.preferredForwardBufferDuration = bufferSeconds()
+                    status = "Weak connection: saving \(Int(Cushion.seconds(afterStalls: cushionStalls))) s ahead so it keeps playing"
+                }
+            }
             if status == nil { status = "Loading" }
         default: break
         }
@@ -148,6 +196,7 @@ final class LivePlayer: ObservableObject {
     private func failed(_ error: Error?) {
         let code = lastHTTPStatus
         let busy = code.map { [401, 403, 429, 456, 458].contains($0) || $0 >= 509 } ?? false
+        if let c = channel { signals.note(c.name, code.map { busy ? "Refused (\($0))" : "Error \($0)" } ?? "Connection lost") }
         if busy && busyTries < Self.busyWaits.count {
             status = "Reconnecting…"
             let wait = Self.busyWaits[busyTries]; busyTries += 1
@@ -257,5 +306,77 @@ struct VodPlayer: UIViewControllerRepresentable {
             if pos.isFinite, pos > 5 { prefs?.savePosition(key, pos, dur.isFinite ? dur : 0) }
         }
         deinit { if let t = timeObs { player?.removeTimeObserver(t) } }
+    }
+}
+
+/// The coloured dot for a channel's signal (green strong, yellow good, red weak), from the last time it played.
+struct SignalDot: View {
+    let level: SignalLevel?
+    var body: some View {
+        if let level, level != .none {
+            Circle().fill(SignalDot.color(level)).frame(width: 6, height: 6)
+        }
+    }
+    static func color(_ l: SignalLevel) -> Color { switch l { case .strong: Color.green; case .ok: Nova.gold; case .weak: Nova.live; case .none: Nova.faint } }
+}
+
+/// The Channel signal window (as on the Fire TV): how strong this channel's signal is, live.
+struct SignalWindow: View {
+    @ObservedObject var live = LivePlayer.shared
+    let onClose: () -> Void
+    var body: some View {
+        let last = live.samples.last
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("CHANNEL SIGNAL").font(.system(size: 13, weight: .heavy)).tracking(1)
+                Spacer()
+                Button(action: onClose) { Image(systemName: "xmark").font(.caption.bold()).padding(7).background(.white.opacity(0.12), in: Circle()) }.buttonStyle(.plain)
+            }
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(1...3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 2).fill(live.level.rawValue >= i ? SignalDot.color(live.level) : .white.opacity(0.15))
+                        .frame(width: 8, height: CGFloat(6 + i * 6))
+                }
+                Text(live.level.label).font(.headline).foregroundStyle(SignalDot.color(live.level)).padding(.leading, 6)
+            }
+            // the last minute: how fast it arrived (line) against what the picture needs (dashes)
+            SpeedGraph(samples: live.samples).frame(height: 60)
+            Group {
+                if let last {
+                    Text("Arriving at \(mbps(last.observedBps))" + (last.indicatedBps > 0 ? " · needs \(mbps(last.indicatedBps))" : ""))
+                }
+                if live.pictureSize.width > 0 { Text("Picture \(Int(live.pictureSize.width))×\(Int(live.pictureSize.height)) · HLS") }
+                Text("Smoothness \(SignalMeter.smoothness(live.samples))% of frames shown")
+                Text("Dropped out: " + (live.stalls == 0 ? "not once" : live.stalls == 1 ? "once" : "\(live.stalls) times"))
+            }.font(.caption).foregroundStyle(Nova.muted)
+        }
+        .foregroundStyle(.white).padding(14).frame(width: 300)
+        .background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Nova.line))
+    }
+    private func mbps(_ b: Double) -> String { String(format: "%.1f Mbps", b / 1_000_000) }
+}
+
+struct SpeedGraph: View {
+    let samples: [SignalSample]
+    var body: some View {
+        GeometryReader { g in
+            let top = max(samples.map { max($0.observedBps, $0.indicatedBps) }.max() ?? 1, 1) * 1.15
+            let step = g.size.width / 59
+            let x0 = g.size.width - CGFloat(max(samples.count - 1, 0)) * step
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.05))
+                if let need = samples.last?.indicatedBps, need > 0 {
+                    Path { p in let y = g.size.height * (1 - need / top); p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: g.size.width, y: y)) }
+                        .stroke(Nova.gold.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
+                Path { p in
+                    for (i, s) in samples.enumerated() {
+                        let pt = CGPoint(x: x0 + CGFloat(i) * step, y: g.size.height * (1 - s.observedBps / top))
+                        if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+                    }
+                }.stroke(Nova.accent, lineWidth: 2)
+            }
+        }
     }
 }
