@@ -26,12 +26,15 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/StickyTV.app Payload/
-          zip -qr StickyTV.ipa Payload
-          ls -la StickyTV.ipa
+          # named after the version: stickytv1.1.ipa, stickytv1.2.ipa, ...
+          V=$(grep 'MARKETING_VERSION' project.yml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "IPA_NAME=stickytv$V" >> "$GITHUB_ENV"
+          zip -qr "stickytv$V.ipa" Payload
+          ls -la "stickytv$V.ipa"
           echo "--- app settings (Info.plist) ---"
           plutil -p Payload/StickyTV.app/Info.plist
       - uses: actions/upload-artifact@v4
         with:
-          name: StickyTV-ipa
-          path: StickyTV.ipa
+          name: ${{ env.IPA_NAME }}
+          path: ${{ env.IPA_NAME }}.ipa
           retention-days: 14
