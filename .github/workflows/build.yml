@@ -1,0 +1,35 @@
+name: Build IPA
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: build
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Logic tests
+        run: cd StickyKit && swift test 2>&1 | tail -40
+      - name: Make the Xcode project
+        run: brew install xcodegen && xcodegen generate
+      - name: Build (unsigned; Sideloadly / AltStore signs it with your Apple ID)
+        run: |
+          set -o pipefail
+          xcodebuild -project StickyTV.xcodeproj -scheme StickyTV -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -60
+      - name: Package the IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/StickyTV.app Payload/
+          zip -qr StickyTV.ipa Payload
+          ls -la StickyTV.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StickyTV-ipa
+          path: StickyTV.ipa
+          retention-days: 14

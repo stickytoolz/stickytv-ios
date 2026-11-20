@@ -1,0 +1,37 @@
+name: StickyTV
+options:
+  bundleIdPrefix: tv.sticky
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  StickyKit:
+    path: StickyKit
+targets:
+  StickyTV:
+    type: application
+    platform: iOS
+    sources:
+      - StickyTV/Sources
+      - StickyTV/Assets.xcassets
+    dependencies:
+      - package: StickyKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tv.sticky.player
+        PRODUCT_NAME: StickyTV
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # the other three logos, chosen in Settings › App icon (like the Fire TV app's logo picker)
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Sticky AppIcon-Drip AppIcon-Retro"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Sticky TV
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_FILE: StickyTV/Info.plist
+        CODE_SIGNING_ALLOWED: NO
