@@ -36,6 +36,7 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     private var retryTask: Task<Void, Never>?
     private var ticker: Timer?
     private var lastTime: Int32 = -1
+    private var lastShown = -1                  // pictures shown so far (VLC's count): the surest sign it's playing
     private var stuckFor = 0                    // seconds the picture hasn't moved while it should be playing
     private static let waits: [Double] = [2, 3, 5, 8, 10, 12, 15, 15]   // about a minute and a quarter in all
 
@@ -97,7 +98,7 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     /// Settings › Player: Buffer (Low 1 s, Normal 3 s, High 10 s), and the weak-signal cushion on top (8, 15, 25 s).
     private func cacheMs() -> Int {
         let prefs = library?.prefs
-        let base = switch prefs?.bufferMode ?? 1 { case 0: 1000; case 2: 10000; default: 3000 }
+        let base = switch prefs?.bufferMode ?? 1 { case 0: 1500; case 2: 12000; default: 5000 }
         let cushion = (prefs?.cushion ?? false) ? Int(Cushion.seconds(afterStalls: cushionStalls) * 1000) : 0
         return max(base, cushion)
     }
@@ -108,7 +109,7 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
         if !(status?.hasPrefix("Reconnecting") ?? false) { status = "Loading" }
-        wasReady = false; lastTime = -1; stuckFor = 0; avLastTime = -1
+        wasReady = false; lastTime = -1; lastShown = -1; stuckFor = 0; avLastTime = -1
         if useApple {
             // the iPhone's own player (HLS)
             player.stop(); player.drawable = nil
@@ -175,7 +176,10 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
             size = av.currentItem?.presentationSize ?? .zero
         } else {
             let t = player.time.intValue
-            moving = player.isPlaying && t != lastTime && t > 0
+            // VLC's clock doesn't tick steadily on live streams: new pictures on screen (or sound playing on) count too
+            let shown = Int(player.media?.numberOfDisplayedPictures ?? 0)
+            moving = player.isPlaying && ((t != lastTime && t > 0) || (shown > lastShown && lastShown >= 0) || player.state == .playing)
+            lastShown = shown
             lastTime = t
             size = player.videoSize
         }
@@ -262,6 +266,7 @@ struct VideoSurface: UIViewRepresentable {
     let fullOpen: Bool
     func makeUIView(context: Context) -> UIView {
         let host = UIView(); host.backgroundColor = .black; host.clipsToBounds = true
+        host.isUserInteractionEnabled = false           // taps go to the app (tap the preview: full screen)
         if isFull == fullOpen { Task { @MainActor in VideoSurface.adopt(host) } }
         return host
     }

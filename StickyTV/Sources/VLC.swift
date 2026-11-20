@@ -15,6 +15,7 @@ final class VideoCanvas: UIView {
     let avLayer = AVPlayerLayer()
     override init(frame: CGRect) {
         super.init(frame: frame); backgroundColor = .black; clipsToBounds = true
+        isUserInteractionEnabled = false                // VLC's picture never takes a tap meant for the app
         avLayer.videoGravity = .resizeAspect
         layer.addSublayer(avLayer)
     }
