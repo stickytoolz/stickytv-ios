@@ -306,7 +306,47 @@ public final class Library: ObservableObject {
         allTeams = found
     }
 
-    public func toggleTeam(_ t: Team) { prefs.toggleTeam(t); teamsVersion += 1 }
+    /// Your teams' coming games (from their season schedules; refreshed every few hours or when the teams change).
+    @Published public private(set) var teamSchedule: [Game] = []
+    private var scheduleFor: Set<String> = []
+    private var scheduleAt = Date.distantPast
+
+    public func refreshSchedules(force: Bool = false) async {
+        let teams = prefs.myTeams
+        let ids = Set(teams.map(\.id))
+        if ids.isEmpty { teamSchedule = []; scheduleFor = []; return }
+        if !force && ids == scheduleFor && Date().timeIntervalSince(scheduleAt) < 3 * 3600 { return }
+        let found: [Game] = await withTaskGroup(of: [Game].self) { group in
+            for t in teams {
+                guard let url = Sports.scheduleURL(t), let l = League.all.first(where: { $0.id == t.league }) else { continue }
+                group.addTask {
+                    guard let r = try? await URLSession.shared.data(from: url), (r.1 as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+                    return Sports.parseScoreboard(r.0, league: l)
+                }
+            }
+            var all: [Game] = []
+            for await g in group { all += g }
+            return all
+        }
+        var seen = Set<String>()
+        teamSchedule = found.filter { seen.insert($0.id).inserted }
+        scheduleFor = ids; scheduleAt = Date()
+    }
+
+    /// My Teams games to show: on now and coming up (today's live scores where ESPN has them), soonest first.
+    public func myTeamGames() -> [Game] {
+        let mine = myTeamIds
+        let today = games.filter { mine.contains($0.home.id) || mine.contains($0.away.id) }
+        let todayIds = Set(today.map(\.id))
+        let merged = today.filter { $0.state != .post } + teamSchedule.filter { !todayIds.contains($0.id) }
+        let up = Sports.upcoming(merged, teams: mine)
+        return up.sorted { ($0.state == .live ? 0 : 1, $0.start) < ($1.state == .live ? 0 : 1, $1.start) }
+    }
+
+    public func toggleTeam(_ t: Team) {
+        prefs.toggleTeam(t); teamsVersion += 1
+        Task { await refreshSchedules(force: true) }
+    }
     public var myTeamIds: Set<String> { Set(prefs.myTeams.map(\.id)) }
 }
 

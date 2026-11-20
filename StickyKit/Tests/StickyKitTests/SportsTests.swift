@@ -62,4 +62,18 @@ final class SportsTests: XCTestCase {
         p.toggleTeam(knicks); XCTAssertTrue(p.myTeams.isEmpty)
         XCTAssertTrue(p.liveScores, "on unless turned off")
     }
+
+    func testUpcomingForMyTeams() {
+        let now = Date()
+        func game(_ id: String, _ days: Double, _ state: Game.State, home: String, away: String) -> Game {
+            func t(_ n: String) -> Team { Team(id: "nba:\(n)", name: n, short: n, abbr: n, logo: nil, league: "nba") }
+            return Game(id: id, league: League("nba", "NBA", "basketball"), start: now.addingTimeInterval(days * 86400), state: state, detail: "",
+                        home: t(home), away: t(away), homeScore: nil, awayScore: nil, networks: [])
+        }
+        let season = [game("past", -3, .post, home: "NY", away: "BOS"), game("g1", 1, .pre, home: "NY", away: "CHI"),
+                      game("g2", 3, .pre, home: "MIA", away: "NY"), game("other", 2, .pre, home: "LAL", away: "GS"),
+                      game("now", 0, .live, home: "CLE", away: "NY")]
+        let up = Sports.upcoming(season, now: now, perTeam: 2, teams: ["nba:NY"])
+        XCTAssertEqual(up.map(\.id), ["now", "g1"], "on now, then the next ones; finished and other teams' games left out")
+    }
 }

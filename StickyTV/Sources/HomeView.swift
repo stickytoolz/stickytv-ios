@@ -41,7 +41,8 @@ struct HomeView: View {
                     // sports first, as on the Fire TV: your teams' games today, then games on now
                     let mine = library.myTeamIds
                     let _ = library.teamsVersion
-                    let teamGames = Sports.sorted(library.games.filter { mine.contains($0.home.id) || mine.contains($0.away.id) }, myTeams: mine)
+                    let _ = library.teamSchedule.count
+                    let teamGames = library.myTeamGames()
                     if on(.myteams) && !teamGames.isEmpty { gameRow("My Teams", teamGames) }
                     let liveGames = Sports.sorted(library.games.filter { $0.state == .live }, myTeams: mine)
                     if on(.livesports) && !liveGames.isEmpty { gameRow("Live sports now", Array(liveGames.prefix(20))) }
@@ -79,6 +80,7 @@ struct HomeView: View {
                 // the sports rows keep their scores up to date while Home is open
                 while !Task.isCancelled {
                     if library.prefs.liveScores { await library.refreshScores() }
+                    await library.refreshSchedules()
                     nowTitles = library.nowTitles()
                     try? await Task.sleep(nanoseconds: 60_000_000_000)
                 }

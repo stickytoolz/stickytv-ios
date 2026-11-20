@@ -18,7 +18,7 @@ struct SportsView: View {
         let base: [Game]
         switch league {
         case allLeagues: base = library.games
-        case myTeams: base = library.games.filter { mine.contains($0.home.id) || mine.contains($0.away.id) }
+        case myTeams: return library.myTeamGames()          // on now and coming up, soonest first
         default: base = library.games.filter { $0.league.id == league }
         }
         return Sports.sorted(base, myTeams: mine)
@@ -84,6 +84,7 @@ struct SportsView: View {
             // scores every minute while Sports is open
             while !Task.isCancelled {
                 await library.refreshScores()
+                await library.refreshSchedules()
                 nowTitles = library.nowTitles()
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
             }
@@ -115,7 +116,7 @@ struct GameCard: View {
                 case .live:
                     HStack(spacing: 4) { Circle().fill(Nova.live).frame(width: 7, height: 7); Text(game.detail).font(.caption.bold()).foregroundStyle(Nova.live) }
                 case .pre:
-                    Text(timeText(game.start)).font(.caption.bold()).foregroundStyle(Nova.text)
+                    Text(whenText(game.start)).font(.caption.bold()).foregroundStyle(Nova.text)
                 case .post:
                     Text(game.detail.isEmpty ? "Final" : game.detail).font(.caption.bold()).foregroundStyle(Nova.muted)
                 }
@@ -241,4 +242,13 @@ struct TeamPickerSheet: View {
                 .padding(16)
         }.background(Nova.bg.ignoresSafeArea())
     }
+}
+
+/// "7:30 PM" today, "Tomorrow 7:30 PM", "Sat Nov 29 1:00 PM" later.
+func whenText(_ d: Date) -> String {
+    let cal = Calendar.current
+    if cal.isDateInToday(d) { return timeText(d) }
+    if cal.isDateInTomorrow(d) { return "Tomorrow \(timeText(d))" }
+    let f = DateFormatter(); f.dateFormat = "EEE MMM d"
+    return "\(f.string(from: d)) \(timeText(d))"
 }

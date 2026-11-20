@@ -52,6 +52,25 @@ public enum Sports {
         return URL(string: "\(base)/apis/site/v2/sports/\(sportPath)/\(l.id)/scoreboard?dates=\(f.string(from: day))")!
     }
 
+    /// A team's whole season (past and upcoming games).
+    public static func scheduleURL(_ t: Team) -> URL? {
+        guard let l = League.all.first(where: { $0.id == t.league }), let espnId = t.id.split(separator: ":").last else { return nil }
+        return URL(string: "\(base)/apis/site/v2/sports/\(l.sport)/\(l.id)/teams/\(espnId)/schedule")
+    }
+
+    /// The games of [teams] still to come (and any on now), soonest first, at most [perTeam] each.
+    public static func upcoming(_ schedule: [Game], now: Date = Date(), perTeam: Int = 4, teams: Set<String>) -> [Game] {
+        var count: [String: Int] = [:]
+        var out: [Game] = []
+        for g in schedule.sorted(by: { $0.start < $1.start }) where g.state == .live || (g.state == .pre && g.start > now.addingTimeInterval(-4 * 3600)) {
+            let ids = [g.home.id, g.away.id].filter { teams.contains($0) }
+            guard !ids.isEmpty, ids.contains(where: { (count[$0] ?? 0) < perTeam }) else { continue }
+            ids.forEach { count[$0, default: 0] += 1 }
+            out.append(g)
+        }
+        return out
+    }
+
     public static func teamsURL(_ l: League) -> URL {
         URL(string: "\(base)/apis/site/v2/sports/\(l.sport)/\(l.id)/teams?limit=1000")!
     }
