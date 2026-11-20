@@ -198,8 +198,11 @@ struct SettingsView: View {
         if problems.isEmpty {
             InfoRow(k: "Recent stream problems", v: "None")
         } else {
-            ForEach(problems.prefix(12)) { p in
-                InfoRow(k: "\(whenText(p.at)) · \(p.channel)", v: p.what)
+            ForEach(problems.prefix(15)) { p in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(whenText(p.at)) · \(p.channel)").font(.caption.bold()).foregroundStyle(Nova.text)
+                    Text(p.what).font(.caption).foregroundStyle(Nova.muted).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(10).background(Nova.panel.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
             }
             SettingRow(title: "Clear the list", value: "") { LivePlayer.shared.signals.clearProblems(); tick += 1 }
         }

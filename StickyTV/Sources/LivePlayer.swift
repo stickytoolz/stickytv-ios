@@ -27,6 +27,7 @@ final class LivePlayer: ObservableObject {
     private var busyTries = 0
     private var wasReady = false
     private var lastHTTPStatus: Int?
+    private var lastErrorDetail: String?
     private var retryTask: Task<Void, Never>?
     private var waitingSince: Date?
     private var watchdog: Timer?
@@ -59,7 +60,7 @@ final class LivePlayer: ObservableObject {
         self.list = list.isEmpty ? [c] : list
         if channel?.id != c.id { pictureOn = false }
         channel = c
-        retries = 0; busyTries = 0
+        retries = 0; busyTries = 0; lastErrorDetail = nil
         library?.prefs.watched(c.id)
         library?.prefs.lastChannel = c.id
         start()
@@ -139,8 +140,17 @@ final class LivePlayer: ObservableObject {
         })
         let nc = NotificationCenter.default
         notes.append(nc.addObserver(forName: .AVPlayerItemNewErrorLogEntry, object: item, queue: .main) { [weak self] n in
-            let code = (n.object as? AVPlayerItem)?.errorLog()?.events.last?.errorStatusCode
-            Task { @MainActor in if let code, code >= 400 { self?.lastHTTPStatus = code } }
+            let ev = (n.object as? AVPlayerItem)?.errorLog()?.events.last
+            let code = ev?.errorStatusCode
+            // what the player said went wrong, and with which address (for the problem log)
+            let detail = ev.map { e -> String in
+                let path = e.uri.flatMap { URL(string: $0)?.lastPathComponent } ?? ""
+                return "\(e.errorDomain) \(e.errorStatusCode)" + (e.errorComment.map { ": \($0)" } ?? "") + (path.isEmpty ? "" : " [\(path)]")
+            }
+            Task { @MainActor in
+                if let code, code >= 400 { self?.lastHTTPStatus = code }
+                if let detail { self?.lastErrorDetail = detail }
+            }
         })
         notes.append(nc.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] n in
             let err = n.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
@@ -196,7 +206,14 @@ final class LivePlayer: ObservableObject {
     private func failed(_ error: Error?) {
         let code = lastHTTPStatus
         let busy = code.map { [401, 403, 429, 456, 458].contains($0) || $0 >= 509 } ?? false
-        if let c = channel { signals.note(c.name, code.map { busy ? "Refused (\($0))" : "Error \($0)" } ?? "Connection lost") }
+        // the iPhone's own account of the error (domain, number, message, and the cause underneath)
+        var why = ""
+        if let e = error as NSError? {
+            why = "\(e.domain) \(e.code): \(e.localizedDescription)"
+            if let u = e.userInfo[NSUnderlyingErrorKey] as? NSError { why += " ← \(u.domain) \(u.code)" }
+        }
+        if let d = lastErrorDetail { why += (why.isEmpty ? "" : " · ") + d }
+        if busy && busyTries == 0, let c = channel { signals.note(c.name, "Refused (\(code!)), waiting for the screen to free up") }
         if busy && busyTries < Self.busyWaits.count {
             status = "Reconnecting…"
             let wait = Self.busyWaits[busyTries]; busyTries += 1
@@ -208,6 +225,7 @@ final class LivePlayer: ObservableObject {
             reconnect(after: 1.5 * Double(retries)); return
         }
         pictureOn = false                               // black behind the message, never a leftover picture
+        if let c = channel { signals.note(c.name, "Couldn't play" + (code.map { " (\($0))" } ?? "") + (why.isEmpty ? "" : " — \(why)")) }
         let screens = library?.info?.maxConnections ?? 1
         if let code, busy {
             status = "The provider refused this stream (\(code)). Your plan allows \(screens) screen\(screens == 1 ? "" : "s") at once: if nothing else is playing, tap the channel to try again."
@@ -216,7 +234,7 @@ final class LivePlayer: ObservableObject {
         } else if let code {
             status = "The provider answered with an error (\(code)). Try again in a moment."
         } else {
-            status = "Can't play this channel right now. Check the internet connection and try again."
+            status = "Can't play this channel right now. Check the internet connection and try again." + (why.isEmpty ? "" : "\n(\(why.prefix(120)))")
         }
     }
 }
