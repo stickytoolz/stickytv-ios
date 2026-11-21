@@ -225,6 +225,9 @@ struct LiveFullScreen: View {
                             Image(systemName: library.prefs.isFavorite(Prefs.liveKey(c)) ? "star.fill" : "star").font(.headline)
                                 .foregroundStyle(library.prefs.isFavorite(Prefs.liveKey(c)) ? Nova.gold : .white).padding(12).background(.black.opacity(0.5), in: Circle())
                         }
+                        Button { live.startPiP() } label: {
+                            Image(systemName: "pip.enter").font(.headline).padding(12).background(.black.opacity(0.5), in: Circle())
+                        }
                         Button { showSignal.toggle(); poke() } label: {
                             Image(systemName: "cellularbars").font(.headline).foregroundStyle(showSignal ? Nova.accent : .white).padding(12).background(.black.opacity(0.5), in: Circle())
                         }

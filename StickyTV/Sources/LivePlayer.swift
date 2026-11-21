@@ -14,13 +14,18 @@ import VLCKitSPM
 /// waiting longer each time (a 1-screen plan can still be counting the last connection for a few seconds); the picture
 /// stays black until the channel's own picture is there; dropouts, speed and lost frames are measured for the signal.
 @MainActor
-final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
+final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate, AVPictureInPictureControllerDelegate {
     static let shared = LivePlayer()
 
     let player = VLCMediaPlayer()
     let av = AVPlayer()                         // the iPhone's own player, when it's the chosen engine
     let canvas = VideoCanvas()
-    private var useApple: Bool { library?.prefs.playerEngine == "apple-hls" }
+    private var useApple: Bool { forceApple || library?.prefs.playerEngine == "apple-hls" }
+    /// Picture-in-picture needs the iPhone's own player: a VLC channel is handed over to it for PiP.
+    private var forceApple = false
+    private var pip: AVPictureInPictureController?
+    @Published private(set) var inPiP = false
+    private var pipWanted = false
     private var avLastTime: Double = -1
     @Published private(set) var channel: Channel?
     @Published private(set) var list: [Channel] = []
@@ -55,6 +60,12 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
         player.delegate = self
         player.drawable = canvas
         canvas.avLayer.player = av
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            pip = AVPictureInPictureController(playerLayer: canvas.avLayer)
+            pip?.delegate = self
+            // with the Apple engine, leaving the app shrinks the channel into a floating window by itself
+            pip?.canStartPictureInPictureAutomaticallyFromInline = true
+        }
     }
 
     func attach(_ library: Library) { self.library = library }
@@ -62,6 +73,7 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     /// Plays [c] (from [list], for swiping to the next and previous channel).
     func play(_ c: Channel, in list: [Channel]) {
         if let cur = channel, cur.id != c.id { previous = (self.list, cur); signals.remember(cur.id, level) }
+        if channel?.id != c.id && !inPiP { forceApple = false }
         if channel?.id != c.id {
             samples = []; stalls = 0; lastStall = nil; level = signals.level(c.id) ?? .none
             pictureOn = false; useOtherFormat = false
@@ -72,6 +84,37 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
         library?.prefs.watched(c.id)
         library?.prefs.lastChannel = c.id
         start()
+    }
+
+    /// The PiP button: the channel in a floating window that stays when you leave the app (a VLC channel moves to the
+    /// iPhone's player first — VLC can't do PiP — and starts as soon as it plays).
+    func startPiP() {
+        guard pip != nil, channel != nil else { status = "Picture-in-picture isn't available on this iPhone"; return }
+        pipWanted = true
+        if !useApple { forceApple = true; retries = 0; start() } else { tryStartPiP() }
+    }
+
+    private func tryStartPiP() {
+        guard pipWanted, let pip, av.timeControlStatus == .playing, pip.isPictureInPicturePossible else { return }
+        pipWanted = false
+        pip.startPictureInPicture()
+    }
+
+    nonisolated func pictureInPictureControllerDidStartPictureInPicture(_ c: AVPictureInPictureController) {
+        Task { @MainActor in self.inPiP = true; self.fullScreen = false }
+    }
+    nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
+        Task { @MainActor in
+            self.inPiP = false
+            // back from PiP: the chosen engine again (VLC)
+            if self.forceApple && self.library?.prefs.playerEngine != "apple-hls" && UIApplication.shared.applicationState == .active {
+                self.forceApple = false; self.retries = 0; self.start()
+            }
+        }
+    }
+    nonisolated func pictureInPictureController(_ c: AVPictureInPictureController,
+                                                restoreUserInterfaceForPictureInPictureStopWithCompletionHandler done: @escaping (Bool) -> Void) {
+        Task { @MainActor in self.fullScreen = true; done(true) }
     }
 
     func stop() {
@@ -183,6 +226,7 @@ final class LivePlayer: NSObject, ObservableObject, VLCMediaPlayerDelegate {
             lastTime = t
             size = player.videoSize
         }
+        if moving && useApple { tryStartPiP() }
         if moving {
             if !wasReady { wasReady = true; retries = 0 }
             if size.width > 0 { pictureOn = true; pictureSize = size }

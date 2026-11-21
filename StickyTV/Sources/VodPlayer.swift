@@ -159,6 +159,7 @@ struct AVVodPlayer: UIViewControllerRepresentable {
         let vc = AVPlayerViewController()
         vc.player = p
         vc.allowsPictureInPicturePlayback = true
+        vc.canStartPictureInPictureAutomaticallyFromInline = true     // leaving the app keeps the movie in a floating window
         context.coordinator.track(p, key: key, prefs: prefs)
         p.play()
         return vc
